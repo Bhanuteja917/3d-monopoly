@@ -1,0 +1,21 @@
+{
+  "name": "3d-monopoly",
+  "version": "1.0.0",
+  "description": "Multiplayer 3D Monopoly (up to 6 players) for the web, playable from mobile devices.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node test/simulate.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.22.3",
+    "socket.io": "^4.8.4",
+    "three": "^0.169.0"
+  }
+}
