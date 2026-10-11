@@ -52,7 +52,7 @@ export const UTILITIES = [
   { id: 'UT-AIR', name: 'Airport', model: 'airport', lm: 'airport', region: 'ANZ' },
 ];
 
-// The board, clockwise from Start: 45 spaces for every player count.
+// The board, clockwise from Start: 47 spaces for every player count.
 // { corner: n } is corner slot Cn; { set } takes that set's next city; { utility } is a utility id.
 const C = (corner, region) => ({ corner, region });
 const T = (set) => ({ set });
@@ -62,8 +62,8 @@ export const BOARD_LAYOUT = [
   C(2, 'EU'), T('S3'), T('S3'), U('UT-RAIL'), T('S4'), T('S4'), T('S4'),
   C(3, 'UKI'), T('S5'), T('S5'), T('S5'), U('UT-OIL'), T('S6'), T('S6'),
   C(4, 'ME'), T('S7'), T('S7'), U('UT-SOLAR'), T('S8'), T('S8'),
-  C(5, 'AF'), T('S9'), T('S9'), T('S9'), U('UT-PORT'), T('S10'), T('S10'), T('S10'), T('S10'),
-  C(6, 'ANZ'), T('S11'), T('S11'), T('S11'), U('UT-AIR'), T('S12'), T('S12'), T('S12'), T('S12'),
+  C(5, 'AF'), T('S9'), T('S9'), T('S9'), C(7, 'AF'), U('UT-PORT'), T('S10'), T('S10'), T('S10'), T('S10'),
+  C(6, 'ANZ'), T('S11'), T('S11'), T('S11'), C(8, 'ANZ'), U('UT-AIR'), T('S12'), T('S12'), T('S12'), T('S12'),
 ];
 
 export const CORNERS = {
@@ -75,8 +75,8 @@ export const CORNERS = {
   shop: { name: 'Shopping Center', icon: '🛍️' },
 };
 
-// Corner slots C1..C8. C2-C4 are shuffled each game (FR-024).
-export const CORNER_ORDER = ['start', null, null, null, 'tax', 'shop'];
+// Corner slots C1..C8. C2-C4 are shuffled each game (FR-024); C7 and C8 are two more Auctions (3 in all).
+export const CORNER_ORDER = ['start', null, null, null, 'tax', 'shop', 'auction', 'auction'];
 export const SHUFFLED_CORNERS = ['auction', 'jail', 'chance'];
 
 // effect kinds: start | utility | land | corner | move | cash | birthday | jailcard | pay | payall | repairs

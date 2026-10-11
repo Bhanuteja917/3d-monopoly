@@ -6,7 +6,7 @@ import { TOKENS, REGIONS, SETS, UTILITIES, BOARD_LAYOUT, CORNERS, CORNER_ORDER, 
 export class RuleError extends Error {}
 
 // Bump when the board or state shape changes; older saved games are then discarded.
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 
 // ---------- RNG ----------
 function nextRandom(state) {
@@ -24,10 +24,37 @@ function shuffle(state, arr) {
   return arr;
 }
 
+// Dice draw from the platform's crypto RNG unless the game was created with a seed (tests, simulations).
+function diceRandom(state) {
+  const c = globalThis.crypto;
+  if (state.diceEntropy && c?.getRandomValues) return c.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+  return nextRandom(state);
+}
+
+// Two dice whose totals are flatter than plain 2d6 and that land doubles more often (CONFIG.diceTuning):
+// pick the total, then a face pair that makes it.
+function rollPair(state) {
+  const r = () => diceRandom(state);
+  const { flatShare, doublesChance } = CONFIG.diceTuning;
+  const total = r() < flatShare ? 2 + Math.floor(r() * 11) : 2 + Math.floor(r() * 6) + Math.floor(r() * 6);
+  const pairs = [];
+  for (let a = Math.max(1, total - 6); a <= Math.min(6, total - 1); a++) pairs.push([a, total - a]);
+  const dbl = pairs.find(([a, b]) => a === b);
+  const mixed = pairs.filter(([a, b]) => a !== b);
+  if (dbl && (!mixed.length || r() < doublesChance)) return dbl.slice();
+  return mixed[Math.floor(r() * mixed.length)].slice();
+}
+
 // Tests may inject fixed dice via state.forcedDice = [[3,4], [6], ...].
-function rollDice(state) {
+// A player never rolls the same total twice running unless the re-draw lands on it again (fewer streaks).
+function rollDice(state, pid = null) {
   if (state.forcedDice?.length) return state.forcedDice.shift().slice();
-  return Array.from({ length: state.numDice }, () => 1 + randInt(state, 6));
+  if (state.numDice !== 2) return [1 + Math.floor(diceRandom(state) * 6)];
+  let dice = rollPair(state);
+  const p = pid != null ? state.players[pid] : null;
+  if (p && sum(dice) === p.lastTotal) dice = rollPair(state);
+  if (p) p.lastTotal = sum(dice);
+  return dice;
 }
 const sum = (d) => d.reduce((a, b) => a + b, 0);
 const isDoubles = (d) => d.length === 2 && d[0] === d[1];
@@ -44,6 +71,7 @@ export function createGame({ players, mode = 'both', wealthTarget = null, seed }
   const state = {
     v: STATE_VERSION,
     rng: (seed ?? Math.floor(Math.random() * 2 ** 31)) >>> 0,
+    diceEntropy: seed == null,
     phase: 'firstRoll',
     mode,
     wealthTarget: mode === 'both' || mode === 'wealth' ? wealthTarget : null,
@@ -56,7 +84,7 @@ export function createGame({ players, mode = 'both', wealthTarget = null, seed }
       id: i, name: String(p.name || `Player ${i + 1}`).slice(0, 16),
       token: null, color: '#888', cash: CONFIG.startingCash, pos: 0,
       jailed: false, jailTurns: 0, jailCard: false, vehicle: null, rerollUsed: false, bankrupt: false,
-      orderRolls: [],
+      orderRolls: [], lastTotal: null,
     })),
     order: [],
     spaces: [],
@@ -105,6 +133,7 @@ function buildBoard(state) {
       state.spaces.push({ i, kind: 'utility', region: u.region });
       state.props[i] = {
         kind: 'utility', id: u.id, name: u.name, model: u.model, lm: u.lm,
+        group: CONFIG.transportModels.includes(u.model) ? 'travel' : 'utility', // two separate sets of three
         region: u.region, regionName: regionName(u.region), price: CONFIG.utilityPrice,
         owner: null, mortgaged: false, tradeCount: 0, steps: 0, factor: 1,
       };
@@ -133,7 +162,9 @@ export function completeSet(state, pid, country) {
 const countryProps = (state, country) => state.countries[country].map((i) => state.props[i]);
 const minSteps = (state, country) => Math.min(...countryProps(state, country).map((c) => c.steps));
 const maxSteps = (state, country) => Math.max(...countryProps(state, country).map((c) => c.steps));
-const utilitiesOwned = (state, pid) => Object.values(state.props).filter((x) => x.kind === 'utility' && x.owner === pid).length;
+const utilitiesOwned = (state, pid, group) => Object.values(state.props).filter((x) => x.kind === 'utility' && x.group === group && x.owner === pid).length;
+/** How many cities of a set one player owns. */
+export const ownedInSet = (state, pid, country) => state.countries[country].filter((i) => state.props[i].owner === pid).length;
 export const activePlayers = (state) => state.order.filter((id) => !P(state, id).bankrupt);
 
 export function baseBuildCost(c) { return Math.floor(c.price * CONFIG.buildCostRate); }
@@ -148,15 +179,12 @@ export const unmortgageCost = (x) => Math.floor(x.price * CONFIG.unmortgageRate)
 
 export function cityRent(state, c) {
   if (c.owner == null || c.mortgaged) return 0;
-  if (c.steps === 0) {
-    const base = Math.floor(c.price * CONFIG.cityRentBase);
-    return completeSet(state, c.owner, c.country) ? base * CONFIG.cityRentSetMultiplier : base;
-  }
+  if (c.steps === 0) return Math.floor(c.price * CONFIG.cityRentBase) * ownedInSet(state, c.owner, c.country);
   return Math.floor(c.price * CONFIG.cityRentByStep[c.steps] * c.factor);
 }
 export function utilityRent(state, u) {
   if (u.owner == null || u.mortgaged) return 0;
-  let n = utilitiesOwned(state, u.owner); // FR-082: mortgaged utilities still count
+  let n = utilitiesOwned(state, u.owner, u.group); // FR-082: mortgaged utilities still count
   if (hasVehicle(P(state, u.owner), 'UTILITY_PLUS_ONE')) n += 1;
   return CONFIG.utilityRent[Math.min(n, 4)];
 }
@@ -233,8 +261,28 @@ export function whoActs(state) {
   if (state.phase !== 'turn') return null;
   const t = state.turn;
   if (t.stage === 'auctionRespond') return t.auction.queue[0];
+  if (t.stage === 'bid') return biddersLeft(state)[0] ?? null;
   return t.active;
 }
+
+/**
+ * Everyone who may act right now. Swap offers and bidding are simultaneous: every listed player can act,
+ * in any order (whoActs gives the first of them, for pass-and-play hand-offs and bots).
+ */
+export function actorsNow(state) {
+  if (state.phase === 'turn' && state.turn.stage === 'auctionRespond') return state.turn.auction.queue.slice();
+  if (state.phase === 'turn' && state.turn.stage === 'bid') return biddersLeft(state);
+  const id = whoActs(state);
+  return id == null ? [] : [id];
+}
+/** Bidders still in: not passed and not already the highest bidder. */
+export function biddersLeft(state) {
+  const b = state.turn?.bid;
+  if (!b) return [];
+  return b.bidders.filter((q) => !b.passed.includes(q) && q !== b.high);
+}
+/** Lowest bid the next bidder may place. */
+export const nextBid = (b, raise) => (b.high == null ? b.start : b.amount + raise);
 
 // ---------- Money ----------
 function credit(state, to, amount) {
@@ -331,9 +379,10 @@ export function act(state, action) {
   state.lastEvents = [];
   const actor = action.player;
   if (state.phase === 'ended') throw new RuleError('The game is over');
-  const expected = whoActs(state);
   const manageAction = ['build', 'sell', 'mortgage', 'unmortgage'].includes(action.type);
-  if (actor !== expected) throw new RuleError('Not your move');
+  // `system` actions (timers running out) come from the server or the local clock, never from a player.
+  if (!action.system && !actorsNow(state).includes(actor)) throw new RuleError('Not your move');
+  if (action.system && action.type !== 'expire') throw new RuleError('Unknown system action');
   const handler = HANDLERS[action.type];
   if (!handler) throw new RuleError(`Unknown action ${action.type}`);
   // Step 4 (build, sell, mortgage) happens on your own turn before you roll, or while a doubles re-roll is pending.
@@ -418,7 +467,7 @@ const HANDLERS = {
     const extra = t.stage === 'manage' && t.extraRoll;
     if (t.stage !== 'roll' && !extra) throw new RuleError('You cannot roll now');
     if (extra) { t.extraRoll = false; t.extraUsed = true; }
-    const dice = rollDice(state);
+    const dice = rollDice(state, player);
     t.dice = dice;
     emit(state, { type: 'dice', player, dice });
     const p = P(state, player);
@@ -433,7 +482,7 @@ const HANDLERS = {
     const t = needStage(state, 'reroll');
     const p = P(state, player);
     p.rerollUsed = true;
-    const dice = rollDice(state);
+    const dice = rollDice(state, player);
     t.dice = dice;
     emit(state, { type: 'dice', player, dice, reroll: true });
     log(state, `${p.name} used the Sports Car reroll.`);
@@ -469,11 +518,56 @@ const HANDLERS = {
     moveBy(state, p, trip.steps);
     resolveSpace(state, p);
   },
+  // Travel: pay the owner the flat rent and stay put instead of taking a trip.
+  stayPay(state, { player }) {
+    const t = needStage(state, 'travel');
+    const from = t.travel.from, x = state.props[from];
+    t.travel = null;
+    if (!pay(state, player, x.owner, utilityRent(state, x), `rent for ${x.name}`, { kind: 'rent', space: from })) return afterBankruptActive(state);
+    toManage(state);
+  },
+  // Declining sends the property to auction: the other players bid, starting at a random 20-50% discount.
   decline(state, { player }) {
     const t = needStage(state, 'buy');
-    log(state, `${nm(state, player)} passed on ${state.props[t.buy].name}.`); // FR-050: stays unowned
+    const i = t.buy, x = state.props[i];
     t.buy = null;
-    toManage(state);
+    const cfg = CONFIG.bidAuction;
+    const [d0, d1] = cfg.discount;
+    const start = Math.max(10, Math.round((x.price * (1 - (d0 + nextRandom(state) * (d1 - d0)))) / 10) * 10);
+    const bidders = turnOrderFrom(state, player).slice(1).filter((q) => !P(state, q).bankrupt && P(state, q).cash >= start);
+    log(state, `${nm(state, player)} passed on ${x.name}.`);
+    if (!bidders.length) { log(state, `Nobody can afford to bid on ${x.name}: it stays unowned.`); return toManage(state); }
+    t.bid = { space: i, seller: player, start, amount: null, high: null, bidders, passed: [], round: 0 };
+    t.stage = 'bid';
+    emit(state, { type: 'bidStart', player, space: i, start });
+    log(state, `🔨 ${x.name} goes to auction: bidding opens at ${fmt(start)}.`);
+  },
+  bid(state, { player, raise }) {
+    const t = needStage(state, 'bid');
+    const b = t.bid;
+    if (!CONFIG.bidAuction.raises.includes(raise)) throw new RuleError('Pick one of the bid buttons');
+    const amount = nextBid(b, raise);
+    if (P(state, player).cash < amount) throw new RuleError('Not enough cash');
+    b.amount = amount;
+    b.high = player;
+    b.round += 1;
+    emit(state, { type: 'bid', player, space: b.space, amount });
+    log(state, `${nm(state, player)} bids ${fmt(amount)}.`);
+    if (!biddersLeft(state).length) closeBid(state);
+  },
+  bidPass(state, { player }) {
+    const t = needStage(state, 'bid');
+    t.bid.passed.push(player);
+    log(state, `${nm(state, player)} drops out.`);
+    if (!biddersLeft(state).length) closeBid(state);
+  },
+  // Timer ran out: online from the server, in pass-and-play from the local clock.
+  expire(state) {
+    const t = state.phase === 'turn' ? state.turn : null;
+    if (t?.stage === 'bid') return closeBid(state);
+    if (t?.stage === 'auctionRespond') { t.auction.refused.push(...t.auction.queue); t.auction.queue = []; return respondersDone(state); }
+    if (t?.stage === 'auctionConfirm') { log(state, `${nm(state, t.active)} let the offers expire.`); t.auction = null; return toManage(state); }
+    throw new RuleError('Nothing to expire');
   },
 
   // Auction (§13)
@@ -499,13 +593,13 @@ const HANDLERS = {
     if (!x || x.owner !== player) throw new RuleError('Offer one of your own properties');
     t.auction.offers.push({ player, space });
     log(state, `${nm(state, player)} offers ${x.name}.`);
-    nextResponder(state);
+    responded(state, player);
   },
   auctionRefuse(state, { player }) {
     const t = needStage(state, 'auctionRespond');
     t.auction.refused.push(player);
     log(state, `${nm(state, player)} refuses.`);
-    nextResponder(state);
+    responded(state, player);
   },
   auctionConfirm(state, { player, from }) {
     const t = needStage(state, 'auctionConfirm');
@@ -611,12 +705,39 @@ function swap(state, a, b) {
   }
   emit(state, { type: 'swap', a, b });
   log(state, `🤝 Swap! ${nm(state, oa)} gets ${xb.name}, ${nm(state, ob)} gets ${xa.name}.`);
+  for (const q of [oa, ob]) receive(state, q, CONFIG.swapBonus, 'swap bonus');
 }
 
-function nextResponder(state) {
+// Bidding over: the highest bidder pays the bank; the player who sent it to auction earns 10-15% of the bid.
+function closeBid(state) {
   const t = state.turn;
-  t.auction.queue.shift();
-  if (t.auction.queue.length) return;
+  const b = t.bid;
+  const x = state.props[b.space];
+  t.bid = null;
+  if (b.high == null) {
+    log(state, `No bids for ${x.name}: it stays unowned.`);
+    emit(state, { type: 'bidEnd', space: b.space, winner: null });
+    return toManage(state);
+  }
+  const winner = P(state, b.high);
+  winner.cash -= b.amount;
+  x.owner = winner.id;
+  emit(state, { type: 'bidEnd', space: b.space, winner: winner.id, amount: b.amount });
+  log(state, `🔨 ${winner.name} wins ${x.name} for ${fmt(b.amount)}.`);
+  const [c0, c1] = CONFIG.bidAuction.commission;
+  const cut = Math.round((b.amount * (c0 + nextRandom(state) * (c1 - c0))) / 10) * 10;
+  if (cut > 0 && !P(state, b.seller).bankrupt) receive(state, b.seller, cut, `auction commission on ${x.name}`);
+  toManage(state);
+}
+
+// Offers come in simultaneously: each responder answers once, in any order.
+function responded(state, player) {
+  const t = state.turn;
+  t.auction.queue = t.auction.queue.filter((q) => q !== player);
+  if (!t.auction.queue.length) respondersDone(state);
+}
+function respondersDone(state) {
+  const t = state.turn;
   if (!t.auction.offers.length) {
     log(state, 'No offers were made.');
     t.auction = null;
@@ -632,7 +753,7 @@ function startTurn(state, pid) {
   state.turnNo += 1;
   state.turn = {
     active: pid, stage: 'roll', dice: null, extraRoll: false, extraUsed: false, rolls: 0,
-    escaped: false, buy: null, auction: null, card: null, travel: null, pendingDice: null, turnNo: state.turnNo,
+    escaped: false, buy: null, auction: null, bid: null, card: null, travel: null, pendingDice: null, turnNo: state.turnNo,
   };
   emit(state, { type: 'turnStart', player: pid });
   log(state, `— ${p.name}'s turn (round ${state.round}) —`);
@@ -673,6 +794,7 @@ function proceedRoll(state, p, dice) {
     t.extraRoll = true; // FR-041
     log(state, 'Doubles! One extra roll after this move.');
   }
+  if (dice.length === 2 && dice[0] === 6 && dice[1] === 6) receive(state, p.id, CONFIG.diceTuning.jackpot, 'double six jackpot');
   moveBy(state, p, total);
   resolveSpace(state, p);
 }
@@ -896,9 +1018,16 @@ export function botAction(state, pid) {
     case 'reroll': return { type: 'keepRoll', player: pid };
     case 'card': return { type: 'dismissCard', player: pid };
     case 'buy': return p.cash - state.props[t.buy].price >= reserve ? { type: 'buy', player: pid } : { type: 'decline', player: pid };
-    case 'travel': { // cheapest trip
+    case 'travel': { // cheapest of staying (flat rent) and the trips
       const k = t.travel.options.reduce((best, o, i, all) => (o.fare < all[best].fare ? i : best), 0);
+      if (!t.travel.options.length || utilityRent(state, state.props[t.travel.from]) <= t.travel.options[k].fare) return { type: 'stayPay', player: pid };
       return { type: 'travel', player: pid, option: k };
+    }
+    case 'bid': { // bid the smallest raise while it stays under 85% of the price and above the cash reserve
+      const b = t.bid;
+      const amount = nextBid(b, CONFIG.bidAuction.raises[0]);
+      const ok = amount <= state.props[b.space].price * 0.85 && p.cash - amount >= reserve;
+      return ok ? { type: 'bid', player: pid, raise: CONFIG.bidAuction.raises[0] } : { type: 'bidPass', player: pid };
     }
     case 'auctionPick': return { type: 'auctionSkip', player: pid };
     case 'auctionRespond': return { type: 'auctionRefuse', player: pid };
@@ -925,7 +1054,6 @@ function botBuild(state, pid) {
 export function timeoutAction(state) {
   if (state.phase !== 'turn') return null;
   const t = state.turn;
-  if (t.stage === 'auctionRespond') return { type: 'auctionRefuse', player: t.auction.queue[0] };
-  if (t.stage === 'auctionConfirm') return { type: 'auctionDecline', player: t.active };
+  if (['auctionRespond', 'auctionConfirm', 'bid'].includes(t.stage)) return { type: 'expire', system: true };
   return null;
 }

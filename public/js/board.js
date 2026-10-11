@@ -364,10 +364,10 @@ export class Board {
         else if (!owner) t.landmark.visible = false;
       }
       // Redraw the card face when what it shows changes (owner tag, mortgage stamp).
-      const key = `${x.owner ?? ''}|${x.mortgaged ? 1 : 0}`;
+      const model = cardModel(state, t.i);
+      const key = `${x.owner ?? ''}|${x.mortgaged ? 1 : 0}|${model.price}`; // rent changes with the owner's set
       if (t.card.key !== key) {
         t.card.key = key;
-        const model = cardModel(state, t.i);
         const draw = () => { drawCard(model, { scale: 1, canvas: t.card.canvas, onUpdate: draw }); t.card.tex.needsUpdate = true; };
         draw();
       }

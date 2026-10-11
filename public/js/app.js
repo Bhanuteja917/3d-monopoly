@@ -3,7 +3,7 @@ import { S, t } from './strings.js';
 import { Board } from './board.js';
 import { characterUrl } from './characters.js';
 import { cardHTML } from './cards.js';
-import { cardModel, UTILITY_COLOR } from '/shared/cards.js';
+import { cardModel } from '/shared/cards.js';
 import { CONFIG } from '/shared/config.js';
 import { TOKENS, CHANCE_CARDS, VEHICLES, CORNERS, BOARD_LAYOUT } from '/shared/content.js';
 import * as E from '/shared/engine.js';
@@ -126,8 +126,9 @@ function bindMenus() {
   $('#btn-start-online').onclick = () => socket?.emit('room:start', {}, (res) => { if (!res.ok) toast(res.error, true); });
   $('#btn-game-settings').onclick = () => openSettings();
   $('#btn-view').onclick = () => { if (board && shown) board.toggleOverview(camPid(shown.phase === 'turn' ? shown.turn.active : null)); };
+  // 📍 "Back to my pawn": online that is your own pawn; in pass-and-play, whoever is playing.
   $('#btn-home').onclick = () => {
-    const pid = camPid(shown?.phase === 'turn' ? shown.turn.active : null);
+    const pid = online() ? room?.you : camPid(shown?.phase === 'turn' ? shown.turn.active : null);
     if (board && pid != null) board.focusToken(pid, { zoom: true });
   };
   $('#tog-players').onclick = () => toggleRail('players');
@@ -357,6 +358,7 @@ async function playBatch({ state, events }) {
         await board.focusToken(ev.player, { zoom: !board.hasFocused });
         break;
       case 'dice':
+        $('#actions').innerHTML = ''; // the roll is in: the Roll button goes until it is needed again
         await showDice(ev.dice, state.phase === 'firstRoll' || state.phase === 'tokenPick' ? 500 : 650);
         break;
       case 'move':
@@ -386,7 +388,14 @@ async function playBatch({ state, events }) {
         board.sparkle(ev.a); board.sparkle(ev.b);
         await announce(state, ev);
         break;
-      case 'travel': case 'jailed': case 'release': case 'bankrupt': case 'vehicle': case 'sell': case 'mortgage': case 'auction':
+      case 'bidEnd':
+        if (ev.winner != null) board.sparkle(ev.space);
+        await announce(state, ev);
+        break;
+      case 'bid':
+        board.floatText(ev.player, `🔨 ${fmt(ev.amount)}`, 'loss');
+        break;
+      case 'travel': case 'jailed': case 'release': case 'bankrupt': case 'vehicle': case 'sell': case 'mortgage': case 'auction': case 'bidStart':
         await announce(state, ev);
         break;
       case 'tie': toast(S.tieReroll); break;
@@ -427,10 +436,34 @@ function renderHUD() {
   renderTurnBar(st);
   renderStageModal(st);
   maybeHandoff(st);
+  syncLocalClock(st);
   board.highlight(highlightFor(st));
 }
 
 const viewerIs = (pid) => ctl.kind === 'local' || ctl.viewer() === pid;
+// Swap offers and bids are simultaneous: several players may act at once. Online this screen acts for its own
+// seat when that seat is one of them; pass-and-play acts for the first (hand-offs), and bidding lists every bidder.
+function screenActor(st) {
+  const actors = E.actorsNow(st);
+  if (online() && actors.includes(ctl.viewer())) return ctl.viewer();
+  return actors[0] ?? null;
+}
+const simultaneous = (st) => st.phase === 'turn' && ['auctionRespond', 'bid'].includes(st.turn.stage);
+
+// Pass-and-play has no server, so the bidding clock runs here; it restarts with every bid like online.
+let localClock = { key: null, deadline: null, timer: null };
+function syncLocalClock(st) {
+  const key = ctl.kind === 'local' && st.phase === 'turn' && st.turn.stage === 'bid' ? `${st.turnNo}|${st.turn.bid.space}|${st.turn.bid.round}` : null;
+  if (key === localClock.key) return;
+  clearTimeout(localClock.timer);
+  localClock = { key, deadline: null, timer: null };
+  if (!key) return;
+  const ms = CONFIG.bidAuction.seconds * 1000;
+  localClock.deadline = Date.now() + ms;
+  localClock.timer = setTimeout(() => { if (ctl?.kind === 'local') ctl.send({ type: 'expire', system: true }); }, ms);
+  modalKey = null;
+  renderStageModal(st);
+}
 
 function renderPlayers(st) {
   const order = st.order.length ? st.order : st.players.map((p) => p.id);
@@ -498,7 +531,7 @@ function renderActions(st) {
     + mb('build', 'btn-green') + mb('sell', 'btn-blue') + mb('mortgage', 'btn-purple') + mb('unmortgage', 'btn-purple')
     + `<button class="btn btn-yellow btn-roll" id="a-roll"><span class="ic">🎲</span><span class="tx">${tn.stage === 'manage' ? S.rollAgain : S.roll}</span></button>`;
   for (const b of el.querySelectorAll('[data-sheet]')) b.onclick = () => { sheet = b.dataset.sheet; renderStageModal(shown, true); };
-  $('#a-roll').onclick = () => { sheet = null; send({ type: 'roll' }); };
+  $('#a-roll').onclick = () => { sheet = null; el.innerHTML = ''; $('#turn-bar').classList.add('hidden'); send({ type: 'roll' }); };
 }
 
 // Bottom-centre bar: loud "Your turn!" (tap to roll) for the player whose turn it is; for everyone else,
@@ -520,19 +553,20 @@ function renderTurnBar(st) {
   bar.classList.toggle('mine', mine);
   bar.disabled = !mine;
   bar.innerHTML = `<span class="tb-av">${img ? `<img src="${img}" alt="">` : ''}</span><span class="tb-text"><b>${esc(title)}</b><small>${esc(sub)}</small></span>${mine ? '<span class="tb-dice">🎲</span>' : ''}`;
-  bar.onclick = canRoll ? () => { sheet = null; send({ type: 'roll' }); } : null;
-  bar.classList.remove('hidden');
+  bar.onclick = canRoll ? () => { sheet = null; bar.classList.add('hidden'); $('#actions').innerHTML = ''; send({ type: 'roll' }); } : null;
+  bar.classList.toggle('hidden', simultaneous(st)); // the auction dialog says who we are waiting for
 }
 
 function send(action) {
   if (busy) board.skip();
-  ctl.send({ player: E.whoActs(shown), ...action });
+  ctl.send({ player: screenActor(shown), ...action });
 }
 
 function highlightFor(st) {
   if (st.phase !== 'turn') return [];
   const tn = st.turn;
-  const actor = E.whoActs(st);
+  const actor = screenActor(st);
+  if (tn.stage === 'bid') return [tn.bid.space];
   if (!viewerIs(actor)) return [];
   if (tn.stage === 'auctionPick') return E.propsOf(st, actor);
   if (tn.stage === 'auctionRespond') return [tn.auction.offered, ...E.propsOf(st, actor)];
@@ -575,7 +609,7 @@ function cropToArt(url, size = 512) {
 
 function maybeHandoff(st) {
   const el = $('#handoff');
-  if (ctl.kind !== 'local' || st.phase !== 'turn') { el.classList.add('hidden'); return; }
+  if (ctl.kind !== 'local' || st.phase !== 'turn' || st.turn.stage === 'bid') { el.classList.add('hidden'); return; } // bidding: one shared panel
   const actor = E.whoActs(st);
   if (actor == null || actor === lastHandoff) { el.classList.add('hidden'); return; }
   const p = st.players[actor];
@@ -613,9 +647,9 @@ function closeModal(force = false) {
 function onModal(sel, fn) { for (const el of $('#modal-card').querySelectorAll(sel)) el.onclick = () => fn(el); }
 
 function renderStageModal(st, forceSheet = false) {
-  const actor = E.whoActs(st);
+  const actor = screenActor(st);
   const tn = st.turn;
-  const key = `${st.phase}|${tn?.stage}|${actor}|${st.turnNo}|${st.log.length}|${sheet}|${selected}|${room?.deadline || ''}|${st.firstRoll.queue.join(',')}|${st.tokenPick.queue.length}`;
+  const key = `${st.phase}|${tn?.stage}|${actor}|${st.turnNo}|${st.log.length}|${sheet}|${selected}|${room?.deadline || localClock.deadline || ''}|${st.firstRoll.queue.join(',')}|${st.tokenPick.queue.length}`;
   if (key === modalKey && !forceSheet && !$('#modal').classList.contains('hidden')) return;
   const html = stageModalHTML(st, actor);
   if (html) {
@@ -643,8 +677,15 @@ function stageModalHTML(st, actor) {
   }
   const tn = st.turn;
   const p = st.players[tn.active];
+  if (tn.stage === 'bid') return bidHTML(st);
   if (!mine) {
-    if (tn.stage === 'auctionRespond' || tn.stage === 'auctionConfirm') {
+    if (tn.stage === 'auctionRespond') {
+      const a = tn.auction;
+      const total = a.offers.length + a.refused.length + a.queue.length;
+      const answered = online() && room?.you !== tn.active && !a.queue.includes(room?.you) ? S.auctionYouAnswered : S.auctionWaitOffers;
+      return `<h2 class="modal-title">🔨 ${S.auction}</h2>${propCardHTML(st, a.offered)}<p class="modal-sub" style="margin-top:10px">${esc(answered)} ${esc(t(S.auctionAnswered, { n: total - a.queue.length, total }))}</p>${timerHTML()}`;
+    }
+    if (tn.stage === 'auctionConfirm') {
       return `<h2 class="modal-title">🔨 ${S.auction}</h2>${propCardHTML(st, tn.auction.offered)}<p class="modal-sub" style="margin-top:10px">${esc(t(S.waitingFor, { name: st.players[actor].name }))}</p>${timerHTML()}`;
     }
     if (tn.stage === 'card') return `<div class="chance-card"><div class="q">?</div><h3>${esc(CHANCE_CARDS.find((c) => c.id === tn.card).title)}</h3><p>${esc(CHANCE_CARDS.find((c) => c.id === tn.card).text)}</p></div>`;
@@ -677,7 +718,8 @@ function stageModalHTML(st, actor) {
         else if (x) bits.push(S.unowned);
         return `<button class="pick-item" style="--c:${x?.color || '#9aa'}" data-space="${o.space}" data-trip="${k}"><span class="sw"></span><span class="grow"><b>${esc(where)}</b><small>${esc(bits.join(' · '))}</small></span><span class="val">-${fmt(o.fare)}</span></button>`;
       }).join('');
-      return `<h2 class="modal-title">🚆 ${esc(t(S.travelTitle, { prop: hub.name }))}</h2><p class="modal-sub">${esc(t(S.travelHint, { owner: st.players[hub.owner].name }))}</p><div class="pick-list">${trips}</div>`;
+      return `<h2 class="modal-title">🚆 ${esc(t(S.travelTitle, { prop: hub.name }))}</h2><p class="modal-sub">${esc(t(S.travelHint, { owner: st.players[hub.owner].name }))}</p>
+        <div class="modal-buttons"><button class="btn btn-blue" id="m-stay">${S.stayPay} · -${fmt(E.utilityRent(st, hub))}</button></div><div class="pick-list">${trips}</div>`;
     }
     case 'card': {
       const c = CHANCE_CARDS.find((k) => k.id === tn.card);
@@ -685,7 +727,7 @@ function stageModalHTML(st, actor) {
     }
     case 'auctionPick': {
       const own = E.propsOf(st, p.id);
-      return `<h2 class="modal-title">🔨 ${S.auctionPickTitle}</h2><p class="modal-sub">${S.auctionPickHint}</p>${pickListHTML(st, own, (i) => fmt(st.props[i].price))}
+      return `<h2 class="modal-title">🔨 ${S.auctionPickTitle}</h2><p class="modal-sub">${esc(t(S.auctionPickHint, { s: CONFIG.auctionResponseSeconds, bonus: fmt(CONFIG.swapBonus) }))}</p>${pickListHTML(st, own, (i) => fmt(st.props[i].price))}
         <div class="modal-buttons"><button class="btn btn-red" id="m-skip">${S.skip}</button></div>`;
     }
     case 'auctionRespond': {
@@ -693,7 +735,7 @@ function stageModalHTML(st, actor) {
       const offered = st.props[a.offered];
       const own = E.propsOf(st, actor);
       return `<h2 class="modal-title">🔨 ${esc(t(S.auctionRespondTitle, { name: p.name, prop: offered.name }))}</h2>${propCardHTML(st, a.offered)}
-        <p class="modal-sub" style="margin-top:10px">${S.auctionRespondHint}</p>${timerHTML()}${pickListHTML(st, own, (i) => fmt(st.props[i].price), 'offer')}
+        <p class="modal-sub" style="margin-top:10px">${esc(t(S.auctionRespondHint, { bonus: fmt(CONFIG.swapBonus) }))}</p>${timerHTML()}${pickListHTML(st, own, (i) => fmt(st.props[i].price), 'offer')}
         <div class="modal-buttons"><button class="btn btn-red" id="m-refuse">${S.refuse}</button></div>`;
     }
     case 'auctionConfirm': {
@@ -744,6 +786,9 @@ function wireStageModal(st, actor) {
   onModal('#m-keep', a('keepRoll'));
   onModal('#m-buy', a('buy'));
   onModal('#m-pass', a('decline'));
+  onModal('#m-stay', a('stayPay'));
+  onModal('[data-bid]', (el) => send({ type: 'bid', player: Number(el.dataset.bid), raise: Number(el.dataset.raise) }));
+  onModal('[data-bidpass]', (el) => send({ type: 'bidPass', player: Number(el.dataset.bidpass) }));
   onModal('#m-cardok', a('dismissCard'));
   onModal('#m-skip', a('auctionSkip'));
   onModal('#m-refuse', a('auctionRefuse'));
@@ -775,8 +820,39 @@ function pickListHTML(st, spaces, valueFn) {
 }
 
 function timerHTML() {
-  if (!room?.deadline) return '';
-  return `<div class="timer" data-deadline="${room.deadline}">⏱ ${Math.max(0, Math.ceil((room.deadline - Date.now()) / 1000))}s</div>`;
+  const deadline = room?.deadline || localClock.deadline;
+  if (!deadline) return '';
+  return `<div class="timer" data-deadline="${deadline}">⏱ ${Math.max(0, Math.ceil((deadline - Date.now()) / 1000))}s</div>`;
+}
+
+// Bidding on a declined property: every bidder at once. Online you get buttons on your own row; in
+// pass-and-play every bidder's row has buttons on the shared screen.
+function bidHTML(st) {
+  const b = st.turn.bid;
+  const x = st.props[b.space];
+  const viewer = online() ? ctl.viewer() : null;
+  const raises = b.high == null ? [CONFIG.bidAuction.raises[0]] : CONFIG.bidAuction.raises;
+  const row = (q) => {
+    const p = st.players[q];
+    const out = b.passed.includes(q), high = b.high === q;
+    const can = !out && !high && (!online() || q === viewer);
+    const btns = can
+      ? raises.map((r) => {
+        const amt = E.nextBid(b, r);
+        const label = b.high == null ? t(S.bidFirst, { amount: fmt(amt) }) : t(S.bidRaise, { step: fmt(r), amount: fmt(amt) });
+        return `<button class="btn btn-green btn-small" data-bid="${q}" data-raise="${r}" ${p.cash < amt ? 'disabled' : ''}>${esc(label)}</button>`;
+      }).join('') + `<button class="btn btn-red btn-small" data-bidpass="${q}">${S.bidPass}</button>`
+      : `<span class="bid-tag">${out ? S.bidOut : high ? `👑 ${fmt(b.amount)}` : '…'}</span>`;
+    return `<li class="bid-row ${high ? 'high' : ''} ${out ? 'out' : ''}" style="--c:${p.color}"><span class="bid-av">${avatarOf(p) ? `<img src="${avatarOf(p)}" alt="">` : ''}</span>
+      <span class="grow"><b>${esc(p.name)}${q === viewer ? ` (${S.you})` : ''}</b><small>💰${fmt(p.cash)}</small></span><span class="bid-btns">${btns}</span></li>`;
+  };
+  const head = b.high == null ? t(S.bidOpen, { amount: fmt(b.start) })
+    : b.high === viewer ? `${S.bidYouHigh} · ${fmt(b.amount)}` : t(S.bidHigh, { amount: fmt(b.amount), name: st.players[b.high].name });
+  const seller = st.players[b.seller];
+  const sellerNote = !online() || viewer === b.seller ? `<p class="modal-sub">💼 ${esc(online() ? S.bidSeller : `${seller.name}: ${S.bidSeller}`)}</p>` : '';
+  return `<h2 class="modal-title">🔨 ${esc(t(S.bidTitle, { prop: x.name }))}</h2>${propCardHTML(st, b.space)}
+    <p class="modal-sub bid-head"><b>${esc(head)}</b> · ${esc(t(S.price + ' {p}', { p: fmt(x.price) }))}</p>${timerHTML()}
+    <ul class="bid-list">${b.bidders.map(row).join('')}</ul>${sellerNote}`;
 }
 setInterval(() => {
   for (const el of document.querySelectorAll('[data-deadline]')) el.textContent = `⏱ ${Math.max(0, Math.ceil((Number(el.dataset.deadline) - Date.now()) / 1000))}s`;
@@ -788,16 +864,19 @@ function propCardHTML(st, i) {
   const owner = x.owner != null ? st.players[x.owner] : null;
   const rows = [];
   if (x.kind === 'city') {
+    // Unbuilt rent multiplies by how many cities of the set the owner holds; buildings need the whole set.
     const base = Math.floor(x.price * CONFIG.cityRentBase);
     const fac = x.factor;
-    const complete = owner && E.completeSet(st, owner.id, x.country);
-    const cur = x.steps ? x.steps + 1 : complete ? 1 : 0;
-    const r = [[S.rentBase, base], [S.rentSet, base * 2], [S.rentHouse, Math.floor(x.price * 0.5 * fac)], [S.rentBuilding, Math.floor(x.price * 1.25 * fac)], [S.rentTower, Math.floor(x.price * 2.5 * fac)]];
-    r.forEach(([k, v], idx) => rows.push(`<tr class="${owner && idx === cur ? 'now' : ''}"><td>${k}</td><td>${fmt(v)}</td></tr>`));
+    const size = st.countries[x.country].length;
+    const cur = !owner ? -1 : x.steps ? size - 1 + x.steps : E.ownedInSet(st, owner.id, x.country) - 1;
+    const r = Array.from({ length: size }, (_, k) => [t(S.rentOwned, { n: k + 1 }), base * (k + 1)]);
+    r.push([S.rentHouse, Math.floor(x.price * 0.5 * fac)], [S.rentBuilding, Math.floor(x.price * 1.25 * fac)], [S.rentTower, Math.floor(x.price * 2.5 * fac)]);
+    r.forEach(([k, v], idx) => rows.push(`<tr class="${idx === cur ? 'now' : ''}"><td>${esc(k)}</td><td>${fmt(v)}</td></tr>`));
   } else {
-    const n = owner ? st.props && Object.values(st.props).filter((u) => u.kind === 'utility' && u.owner === owner.id).length : 0;
-    const transport = E.isTransport(x); // transport charges a fare per space travelled instead of rent
-    CONFIG.utilityRent.slice(1).forEach((v, idx) => rows.push(`<tr class="${owner && Math.min(n, 4) === idx + 1 ? 'now' : ''}"><td>${t(transport ? S.fareRow : S.utilityRentRow, { n: idx === 3 ? '4+' : idx + 1 })}</td><td>${fmt(transport ? v * CONFIG.travelFareRate : v)}</td></tr>`));
+    // Utilities and travel are separate sets of three; travel shows the rent to stay and the fare per space.
+    const n = owner ? Object.values(st.props).filter((u) => u.kind === 'utility' && u.group === x.group && u.owner === owner.id).length : 0;
+    const transport = E.isTransport(x);
+    CONFIG.utilityRent.slice(1, 4).forEach((v, idx) => rows.push(`<tr class="${owner && n === idx + 1 ? 'now' : ''}"><td>${t(S.utilityRentRow, { n: idx + 1 })}</td><td>${fmt(v)}${transport ? ` · ${fmt(v * CONFIG.travelFareRate)}${S.perSpace}` : ''}</td></tr>`));
   }
   const ownerTk = owner ? tokenInfo(owner.token) : null;
   const meta = [
@@ -809,8 +888,8 @@ function propCardHTML(st, i) {
   ].join('');
   // The card face is the same design as the board tile; rent and status sit beside it.
   return `<div class="prop-wrap">${cardHTML(cardModel(st, i))}
-    <div class="prop-details" style="--c:${x.kind === 'city' ? x.color : UTILITY_COLOR}">
-      <h4>${x.kind === 'utility' && E.isTransport(x) ? S.farePerSpace : S.rent}</h4><table>${rows.join('')}</table>
+    <div class="prop-details" style="--c:${cardModel(st, i).color}">
+      <h4>${x.kind === 'utility' && E.isTransport(x) ? `${S.stayRent} · ${S.farePerSpace}` : S.rent}</h4><table>${rows.join('')}</table>
       <div class="prop-meta">${meta}</div>
     </div></div>`;
 }
@@ -936,6 +1015,12 @@ async function announce(st, ev) {
     case 'bankrupt': pid = ev.player; icon = '💥'; tone = 'bad'; big = true; text = t(N.bankrupt, { p: name(pid) }); break;
     case 'swap': pid = st.props[ev.a]?.owner; icon = '🤝'; big = true; text = t(N.swap, { x: prop(ev.a), y: prop(ev.b) }); break;
     case 'auction': pid = ev.player; icon = '🔨'; text = t(N.swapOffer, { p: name(pid), x: prop(ev.space) }); break;
+    case 'bidStart': pid = ev.player; icon = '🔨'; big = true; text = t(N.bidStart, { x: prop(ev.space), amount: bold(fmt(ev.start)) }); break;
+    case 'bidEnd':
+      if (ev.winner == null) { icon = '🤷'; text = t(N.bidNone, { x: prop(ev.space) }); break; }
+      pid = ev.winner; icon = '🔨'; tone = 'loss'; amount = -ev.amount; big = true;
+      text = t(N.bidWon, { p: name(pid), x: prop(ev.space) });
+      break;
     case 'travel':
       pid = ev.player; icon = '🚆'; tone = 'loss'; amount = ev.fare != null ? -ev.fare : null; big = true;
       text = t(N.travel, { p: name(pid), x: prop(ev.from), y: bold(E.spaceName(st, ev.to)), q: name(ev.owner) });

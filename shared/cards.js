@@ -1,7 +1,9 @@
 // Property card data shared by the board, the card dialog and the art exporter
 // (layout from the "World Property Cards" design).
+import { rentOf } from './engine.js';
 
 export const UTILITY_COLOR = '#6c74d8';
+export const TRAVEL_COLOR = '#2a9fb8';
 export const INK = '#1A0F14';
 
 // Landmark art ids: the city name in lower case with accents and spaces removed, except a few short ones.
@@ -22,24 +24,27 @@ export function mix(hex, target, amt) {
 /**
  * Everything a card face shows for a property (city or utility).
  * `props` is the game's props map and `players` the player list, for owner and set position.
+ * Owned cards show the rent due instead of the price.
  */
 export function cardModel(state, i) {
   const x = state.props[i];
   const isUtility = x.kind === 'utility';
-  const color = isUtility ? UTILITY_COLOR : x.color;
+  const travel = isUtility && x.group === 'travel';
+  const color = travel ? TRAVEL_COLOR : isUtility ? UTILITY_COLOR : x.color;
   const group = isUtility
-    ? Object.keys(state.props).map(Number).filter((k) => state.props[k].kind === 'utility')
+    ? Object.keys(state.props).map(Number).filter((k) => state.props[k].kind === 'utility' && state.props[k].group === x.group)
     : state.countries[x.country];
   const owner = x.owner != null ? state.players[x.owner] : null;
   const n = x.name.length;
   return {
     kind: x.kind,
     city: x.name,
-    setName: isUtility ? 'Utility' : x.countryName,
+    setName: travel ? 'Travel' : isUtility ? 'Utility' : x.countryName,
     badge: isUtility ? '' : x.country.replace(/^S/, ''),
     idx: group.indexOf(i) + 1,
     total: group.length,
-    price: x.price.toLocaleString('en-IN'),
+    price: owner ? `Rent ${rentOf(state, x).toLocaleString('en-IN')}` : x.price.toLocaleString('en-IN'),
+    rented: !!owner,
     color,
     artBg: mix(color, 255, 0.5),
     shade: mix(color, 0, 0.25),
@@ -53,8 +58,9 @@ export function cardModel(state, i) {
 
 // Corner pads: colour, darker rim and the design's icon paths (100x100 box).
 export const CORNER_PADS = {
+  // The arrow points the way play goes: from Start to space 1, which is to the left on screen.
   start: { color: '#7bd389', rim: '#4E9E5C', label: 'START', icon: [
-    { d: 'M12,40 L54,40 L54,20 L88,50 L54,80 L54,60 L12,60 Z', fill: '#ffffff', sw: 7 }] },
+    { d: 'M88,40 L46,40 L46,20 L12,50 L46,80 L46,60 L88,60 Z', fill: '#ffffff', sw: 7 }] },
   auction: { color: '#ffb347', rim: '#C9802A', label: 'AUCTION', icon: [
     { d: 'M40,38 h12 v44 h-12 Z', fill: '#C9874A', sw: 7, rotate: [-35, 46, 42] },
     { d: 'M20,16 h52 v26 h-52 Z', fill: '#ffffff', sw: 7, rotate: [-35, 46, 42] },

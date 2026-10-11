@@ -151,19 +151,22 @@ export function drawCard(card, { scale = 1, canvas = document.createElement('can
   strokedText(ctx, card.city, x0 + w / 2, y + 27, card.nameSize, { stroke: 6, shadow: 3, maxW: w - 20 });
   y += 53;
 
-  // Footer: price pill and set pips
+  // Footer: price pill (green "Rent ..." once owned) and set pips
   ctx.fillStyle = INK; ctx.fillRect(x0, y, w, 4); y += 4;
   const fy = y + (CARD_H - B - y) / 2;
-  ctx.font = `400 22px ${FONT}`;
+  const pip = card.total > 4 ? 14 : 18;
+  const maxTw = w - 24 - card.total * (pip + 4) - 3 - 26 - 6 - 20 - 8;
+  let fs = 22;
+  ctx.font = `400 ${fs}px ${FONT}`;
+  while (ctx.measureText(card.price).width > maxTw && fs > 13) { fs -= 1; ctx.font = `400 ${fs}px ${FONT}`; }
   const tw = ctx.measureText(card.price).width;
   const pillW = 3 + 26 + 6 + tw + 12 + 8, pillH = 38, px = x0 + 12, py = fy - pillH / 2 - 2;
   roundRect(ctx, px, py + 4, pillW, pillH, 19); ctx.fillStyle = INK; ctx.fill();
-  roundRect(ctx, px, py, pillW, pillH, 19); ctx.fillStyle = '#FFD43B'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.stroke();
+  roundRect(ctx, px, py, pillW, pillH, 19); ctx.fillStyle = card.rented ? '#7BD389' : '#FFD43B'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.stroke();
   const coinX = px + 4 + 15, coinY = py + pillH / 2;
   ctx.beginPath(); ctx.arc(coinX, coinY, 11, 0, Math.PI * 2); ctx.fillStyle = '#FFC629'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke();
   ctx.beginPath(); ctx.arc(coinX, coinY, 6, 0, Math.PI * 2); ctx.lineWidth = 2.5; ctx.strokeStyle = '#D6931A'; ctx.stroke();
   ctx.fillStyle = INK; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(card.price, coinX + 17, coinY + 1);
-  const pip = card.total > 4 ? 14 : 18;
   for (let k = 0; k < card.total; k++) {
     const pxp = x0 + w - 12 - (card.total - k) * (pip + 4) + 4 + pip / 2;
     ctx.beginPath(); ctx.arc(pxp, fy, pip / 2 - 1.5, 0, Math.PI * 2);
@@ -227,7 +230,7 @@ export function cardHTML(card) {
       <span class="pc-set">${esc(card.setName)}</span><span class="pc-pos">${card.idx}/${card.total}</span></div>
     <div class="pc-art">${ownerCharacter(card) ? `<img class="pc-char" src="${characterUrl(ownerCharacter(card))}" alt="">` : `<img src="${landmarkUrl(card.lm)}" alt="">`}${card.owner ? `<span class="pc-owned" style="background:${card.owner.color}">Owned · ${esc(card.owner.name)}</span>` : ''}</div>
     <div class="pc-name"><span style="font-size:calc(${card.nameSize} * var(--u))">${esc(card.city)}</span></div>
-    <div class="pc-foot"><span class="pc-price"><svg viewBox="0 0 28 28" width="26" height="26"><circle cx="14" cy="14" r="11.5" fill="#FFC629" stroke="#1A0F14" stroke-width="3"/><circle cx="14" cy="14" r="6.5" fill="none" stroke="#D6931A" stroke-width="2.5"/><path d="M8,9 Q11,6 15,6" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>${esc(card.price)}</span>
+    <div class="pc-foot"><span class="pc-price${card.rented ? ' rent' : ''}"><svg viewBox="0 0 28 28" width="26" height="26"><circle cx="14" cy="14" r="11.5" fill="#FFC629" stroke="#1A0F14" stroke-width="3"/><circle cx="14" cy="14" r="6.5" fill="none" stroke="#D6931A" stroke-width="2.5"/><path d="M8,9 Q11,6 15,6" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>${esc(card.price)}</span>
       <span class="pc-pips ${card.total > 4 ? 'small' : ''}">${pips}</span></div>
     ${card.mortgaged ? '<div class="pc-mortgaged"><span>MORTGAGED</span></div>' : ''}
   </div>`;

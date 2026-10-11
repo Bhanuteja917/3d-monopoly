@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { io } from 'socket.io-client';
-import { whoActs, botAction } from '../shared/engine.js';
+import { whoActs, actorsNow, botAction } from '../shared/engine.js';
 
 const PORT = 3199;
 const URL = `http://localhost:${PORT}`;
@@ -27,7 +27,7 @@ function player(clientId, name) {
   sock.on('game', ({ state }) => {
     me.state = state;
     if (state.phase === 'ended' || !me.room || me.room.seats[me.room.you]?.bot) return;
-    if (whoActs(state) !== me.room.you) return;
+    if (!actorsNow(state).includes(me.room.you)) return;
     const a = botAction(state, me.room.you);
     sock.emit('game:action', a, (res) => { if (!res.ok) me.errors.push(res.error); });
   });

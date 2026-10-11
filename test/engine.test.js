@@ -6,6 +6,7 @@ import { TOKENS, SETS, BOARD_LAYOUT, CHANCE_CARDS } from '../shared/content.js';
 import {
   createGame, act, whoActs, netWorth, cityRent, utilityRent, canBuild, canSell, canMortgage,
   buildCost, sellValue, botAction, timeoutAction, ranking, RuleError, propsOf, travelFare, isTransport,
+  actorsNow, biddersLeft,
 } from '../shared/engine.js';
 
 // ---------- helpers ----------
@@ -24,7 +25,7 @@ const A = (s, which = 0) => s.countries[which ? 'S9' : 'S5'].slice();
 const B = (s, which = 0) => s.countries[which ? 'S8' : 'S7'].slice();
 const UTILITY_SPACES = BOARD_LAYOUT.map((x, i) => (x.utility ? i : -1)).filter((i) => i >= 0);
 const UT = (k = 0) => UTILITY_SPACES[k];
-const NEUTRAL = 31; // Seaport
+const NEUTRAL = BOARD_LAYOUT.findIndex((x) => x.utility === 'UT-PORT'); // Seaport
 const give = (s, pid, ...spaces) => { for (const i of spaces.flat()) s.props[i].owner = pid; };
 function rollTo(s, pid, target, dice) {
   const n = s.spaces.length;
@@ -37,7 +38,7 @@ const doAct = (s, type, extra = {}) => act(s, { type, player: whoActs(s), ...ext
 function finishStage(s) {
   // Resolve any pending decision for the active player the passive way.
   const st = s.turn.stage;
-  if (st === 'buy') doAct(s, 'decline');
+  if (st === 'buy') { doAct(s, 'decline'); if (s.turn.stage === 'bid') act(s, { type: 'expire', system: true }); }
   else if (st === 'card') doAct(s, 'dismissCard');
   else if (st === 'auctionPick') doAct(s, 'auctionSkip');
   else if (st === 'shop') doAct(s, 'skipShop');
@@ -55,15 +56,16 @@ function toTurnOf(s, pid) {
 // ---------- Board (§5, §6) ----------
 describe('Board structure', () => {
   for (const n of [4, 5, 6, 7, 8]) {
-    test(`${n} players: the same 45-space board, 2 dice, corner order (FR-023..025, FR-040)`, () => {
+    test(`${n} players: the same 47-space board, 2 dice, corner order, 3 Auctions (FR-023..025, FR-040)`, () => {
       const s = createGame({ players: Array.from({ length: n }, (_, i) => ({ name: `P${i}` })), seed: n });
-      assert.equal(s.spaces.length, 45);
+      assert.equal(s.spaces.length, 47);
       assert.equal(s.numDice, 2);
       assert.equal(s.spaces[0].corner, 'start'); // FR-023
       const corners = s.spaces.filter((x) => x.kind === 'corner');
-      assert.deepEqual(corners.map((x) => x.i), [0, 7, 14, 21, 27, 36]);
+      assert.deepEqual(corners.map((x) => x.i), [0, 7, 14, 21, 27, 31, 37, 41]);
       assert.deepEqual(corners.slice(1, 4).map((x) => x.corner).sort(), ['auction', 'chance', 'jail']); // FR-024
-      assert.deepEqual(corners.slice(4).map((x) => x.corner), ['tax', 'shop']); // FR-025
+      assert.deepEqual(corners.slice(4).map((x) => x.corner), ['tax', 'auction', 'shop', 'auction']); // FR-025
+      assert.equal(corners.filter((x) => x.corner === 'auction').length, 3);
       assert.equal(s.spaces.filter((x) => x.kind === 'utility').length, 6);
       assert.equal(s.spaces.filter((x) => x.kind === 'city').length, 33);
     });
@@ -166,8 +168,37 @@ describe('Dice and movement', () => {
     assert.equal(s.turn.stage, 'buy');
     assert.equal(s.turn.active, 0);
     doAct(s, 'decline');
+    assert.equal(s.turn.stage, 'bid');
+    act(s, { type: 'expire', system: true });
     assert.equal(s.turn.active, 1);
     assert.equal(s.turn.stage, 'roll');
+  });
+  test('dice: real faces, flatter totals than 2d6, more doubles, no repeat-total streaks', () => {
+    const s = game(4);
+    const N = 20000;
+    const totals = new Array(13).fill(0);
+    let doubles = 0, repeats = 0, last = null;
+    for (let k = 0; k < N; k++) {
+      s.turn.stage = 'roll'; s.turn.extraRoll = false; s.turn.extraUsed = false; s.turn.rolls = 0;
+      s.turn.active = 0; s.players[0].jailed = false; s.players[0].cash = 15000; s.round = 1;
+      s.forcedDice = [];
+      const d = act(s, { type: 'roll', player: 0 }).find((e) => e.type === 'dice').dice;
+      assert.ok(d.length === 2 && d.every((v) => v >= 1 && v <= 6));
+      const tot = d[0] + d[1];
+      totals[tot]++;
+      if (d[0] === d[1]) doubles++;
+      if (tot === last) repeats++;
+      last = tot;
+    }
+    const pct = (n) => n / N;
+    assert.ok(pct(doubles) > 0.22 && pct(doubles) < 0.35, `doubles ${pct(doubles)}`); // plain 2d6: 0.167
+    assert.ok(pct(totals[2]) > 0.04 && pct(totals[7]) < 0.15, `2: ${pct(totals[2])}, 7: ${pct(totals[7])}`); // 2d6: 0.028 / 0.167
+    assert.ok(pct(repeats) < 0.05, `repeats ${pct(repeats)}`);
+  });
+  test('double six pays the jackpot', () => {
+    const s = game(4);
+    rollTo(s, 0, NEUTRAL, [6, 6]);
+    assert.equal(s.players[0].cash, 15000 + CONFIG.diceTuning.jackpot);
   });
   test('1-die boards have no doubles or extra roll (FR-042)', () => {
     const s = game(4);
@@ -180,14 +211,65 @@ describe('Dice and movement', () => {
 
 // ---------- Landing and cities (§9, §10) ----------
 describe('Buying and rent', () => {
-  test('declined purchase stays unowned, no auction (FR-050)', () => {
+  test('declining opens bidding for the other players at a 20-50% discount', () => {
+    for (let seed = 1; seed < 30; seed++) {
+      const s = game(4, { seed });
+      const [c] = A(s);
+      rollTo(s, 0, c, [1]);
+      doAct(s, 'decline');
+      assert.equal(s.turn.stage, 'bid');
+      const b = s.turn.bid;
+      const price = s.props[c].price;
+      assert.ok(b.start >= price * 0.5 - 10 && b.start <= price * 0.8 + 10, `start ${b.start} of ${price}`);
+      assert.deepEqual(b.bidders, [1, 2, 3]);
+      assert.deepEqual(actorsNow(s), [1, 2, 3]);
+      assert.throws(() => act(s, { type: 'bid', player: 0, raise: 100 }), /Not your move/);
+    }
+  });
+  test('bids come in any order; the winner pays the bank and the seller earns 10-15% commission', () => {
     const s = game(4);
     const [c] = A(s);
     rollTo(s, 0, c, [1]);
-    assert.equal(s.turn.stage, 'buy');
     doAct(s, 'decline');
-    assert.equal(s.props[c].owner, null);
+    const start = s.turn.bid.start;
+    const cash = s.players.map((p) => p.cash);
+    act(s, { type: 'bid', player: 3, raise: 100 }); // first bid is the opening price
+    assert.equal(s.turn.bid.amount, start);
+    act(s, { type: 'bid', player: 1, raise: 500 });
+    assert.equal(s.turn.bid.amount, start + 500);
+    assert.deepEqual(biddersLeft(s), [2, 3]);
+    act(s, { type: 'bidPass', player: 2 });
+    act(s, { type: 'bidPass', player: 3 });
+    assert.equal(s.props[c].owner, 1);
+    assert.equal(s.players[1].cash, cash[1] - (start + 500));
+    const cut = s.players[0].cash - cash[0];
+    assert.ok(cut >= (start + 500) * 0.1 - 10 && cut <= (start + 500) * 0.15 + 10, `commission ${cut}`);
     assert.equal(s.turn.active, 1); // the turn ended by itself
+  });
+  test('no bids: the property stays unowned; the timer closes bidding on the high bid', () => {
+    const s = game(4);
+    const [c, d] = A(s);
+    rollTo(s, 0, c, [1]);
+    doAct(s, 'decline');
+    for (const q of [1, 2, 3]) act(s, { type: 'bidPass', player: q });
+    assert.equal(s.props[c].owner, null);
+    const t = game(4);
+    rollTo(t, 0, d, [1]);
+    doAct(t, 'decline');
+    act(t, { type: 'bid', player: 2, raise: 1000 });
+    assert.deepEqual(timeoutAction(t), { type: 'expire', system: true });
+    act(t, timeoutAction(t));
+    assert.equal(t.props[d].owner, 2);
+  });
+  test('players cannot send timer actions and cannot bid more than they have', () => {
+    const s = game(4);
+    const [c] = A(s);
+    rollTo(s, 0, c, [1]);
+    doAct(s, 'decline');
+    assert.throws(() => act(s, { type: 'bid', player: 1, raise: 7 }), /bid buttons/);
+    s.players[2].cash = 10;
+    assert.throws(() => act(s, { type: 'bid', player: 2, raise: 100 }), /Not enough cash/);
+    assert.throws(() => act(s, { type: 'roll', player: 0, system: true }), RuleError);
   });
   test('buy at list price', () => {
     const s = game(4);
@@ -197,14 +279,19 @@ describe('Buying and rent', () => {
     assert.equal(s.props[c].owner, 0);
     assert.equal(s.players[0].cash, 15000 - s.props[c].price);
   });
-  test('rent: 10% / 20% set / 50% / 125% / 250% (§10.2)', () => {
+  test('rent: 10% x cities owned in the set / 50% / 125% / 250% (§10.2)', () => {
     const s = game(4);
     const cs = A(s);
     const price = s.props[cs[0]].price;
     give(s, 1, cs[0]);
     assert.equal(cityRent(s, s.props[cs[0]]), Math.floor(price * 0.1));
+    give(s, 1, cs[1]);
+    assert.equal(cityRent(s, s.props[cs[0]]), Math.floor(price * 0.1) * 2); // 2 of the set: double
     give(s, 1, cs);
-    assert.equal(cityRent(s, s.props[cs[0]]), Math.floor(price * 0.1) * 2);
+    assert.equal(cityRent(s, s.props[cs[0]]), Math.floor(price * 0.1) * 3); // 3 of the set: triple
+    const four = s.countries.S12;
+    give(s, 2, four);
+    assert.equal(cityRent(s, s.props[four[0]]), Math.floor(s.props[four[0]].price * 0.1) * 4);
     for (const [steps, rate] of [[1, 0.5], [2, 1.25], [3, 2.5]]) {
       s.props[cs[0]].steps = steps;
       assert.equal(cityRent(s, s.props[cs[0]]), Math.floor(price * rate));
@@ -326,24 +413,27 @@ describe('Building, selling, mortgage (§10.3-10.5)', () => {
 
 // ---------- Utilities (§11) ----------
 describe('Utilities', () => {
-  test('rent 250/500/1000/2000, mortgaged still counts, cap at 4 (FR-080..082)', () => {
+  test('utilities and travel are separate sets: rent 250/500/1000 by count in the set, mortgaged still counts (FR-080..082)', () => {
     const s = game(8);
-    const uts = [0, 1, 2, 3, 4].map(UT);
-    const expect = [250, 500, 1000, 2000, 2000];
-    uts.forEach((u, k) => {
-      give(s, 1, u);
-      assert.equal(utilityRent(s, s.props[uts[0]]), expect[k]);
+    const utilities = [0, 2, 3].map(UT), travel = [1, 4, 5].map(UT);
+    assert.deepEqual(utilities.map((i) => s.props[i].group), ['utility', 'utility', 'utility']);
+    assert.deepEqual(travel.map((i) => s.props[i].group), ['travel', 'travel', 'travel']);
+    give(s, 1, travel); // travel does not raise utility rent
+    [250, 500, 1000].forEach((rent, k) => {
+      give(s, 1, utilities[k]);
+      assert.equal(utilityRent(s, s.props[utilities[0]]), rent);
     });
-    s.props[uts[1]].mortgaged = true;
-    assert.equal(utilityRent(s, s.props[uts[1]]), 0);
-    assert.equal(utilityRent(s, s.props[uts[0]]), 2000);
+    assert.equal(utilityRent(s, s.props[travel[0]]), 1000);
+    s.props[utilities[1]].mortgaged = true;
+    assert.equal(utilityRent(s, s.props[utilities[1]]), 0);
+    assert.equal(utilityRent(s, s.props[utilities[0]]), 1000);
   });
-  test('Speedboat counts one more utility, cap still applies (VH-07)', () => {
+  test('Speedboat counts one more in the set, cap still applies (VH-07)', () => {
     const s = game(6);
     give(s, 1, UT(0));
     s.players[1].vehicle = 'VH-07';
     assert.equal(utilityRent(s, s.props[UT(0)]), 500);
-    give(s, 1, UT(1), UT(2), UT(3));
+    give(s, 1, UT(2), UT(3));
     assert.equal(utilityRent(s, s.props[UT(0)]), 2000);
   });
   test('utilities cannot be built on (FR-081)', () => {
@@ -382,12 +472,24 @@ describe('Transport trips', () => {
     assert.ok(opts[0].fare < opts[2].fare, 'longer trips cost more');
     assert.equal(s.players[pid].cash, cash, 'nothing paid until a trip is picked');
   });
-  test('fare is 50 per space with one utility owned, and scales with utilities owned', () => {
+  test('fare is 50 per space with one travel hub owned, and scales with travel hubs only', () => {
     const s = game(4);
     give(s, 1, RAIL());
     assert.equal(travelFare(s, s.props[RAIL()], 10), 500);
     give(s, 1, DAM());
+    assert.equal(travelFare(s, s.props[RAIL()], 10), 500);
+    give(s, 1, UT(4));
     assert.equal(travelFare(s, s.props[RAIL()], 10), 1000);
+  });
+  test('the lander may pay the flat rent and stay instead of travelling', () => {
+    const s = game(4);
+    const { pid, owner } = landOnRail(s);
+    const before = [s.players[pid].cash, s.players[owner].cash, s.players[pid].pos];
+    act(s, { type: 'stayPay', player: pid });
+    assert.equal(s.players[pid].cash, before[0] - 250);
+    assert.equal(s.players[owner].cash, before[1] + 250);
+    assert.equal(s.players[pid].pos, before[2]);
+    assert.equal(s.turn.active, (pid + 1) % 4);
   });
   test('picking a trip pays the owner, moves the player and resolves the destination', () => {
     const s = game(4);
@@ -433,13 +535,14 @@ describe('Transport trips', () => {
     assert.notEqual(s.turn.stage, 'travel');
     assert.equal(s.players[owner].cash, cash + 250);
   });
-  test('bot picks the cheapest trip', () => {
+  test('bot picks the cheapest of staying and the trips', () => {
     const s = game(4);
     const { pid } = landOnRail(s);
     const a = botAction(s, pid);
-    assert.equal(a.type, 'travel');
     const fares = s.turn.travel.options.map((o) => o.fare);
-    assert.equal(fares[a.option], Math.min(...fares));
+    const cheapest = Math.min(...fares);
+    if (cheapest < 250) assert.equal(fares[a.option], cheapest);
+    else assert.equal(a.type, 'stayPay');
   });
 });
 
@@ -564,25 +667,24 @@ describe('Auction swap', () => {
     rollTo(s, 0, auction, [1]);
     assert.equal(s.turn.active, 1); // the turn ended by itself
   });
-  test('full flow: offers in turn order, confirm swaps, no cash changes (FR-110, FR-111, FR-114)', () => {
+  test('full flow: everyone answers at once, confirm swaps, both traders collect the swap bonus (FR-110, FR-111, FR-114)', () => {
     const { s, auction } = auctionGame();
     const [a] = A(s); const [b] = B(s); const [c] = A(s, 3);
     give(s, 0, a); give(s, 1, b); give(s, 2, c);
     rollTo(s, 0, auction, [1]);
     assert.equal(s.turn.stage, 'auctionPick');
     doAct(s, 'auctionPick', { space: a });
-    assert.equal(whoActs(s), 1);
+    assert.deepEqual(actorsNow(s), [1, 2]); // player 3 owns nothing and is skipped
     assert.throws(() => act(s, { type: 'auctionOffer', player: 1, space: c }), /own/);
-    doAct(s, 'auctionOffer', { space: b });
-    assert.equal(whoActs(s), 2);
-    doAct(s, 'auctionRefuse');
-    // player 3 owns nothing and is skipped
+    act(s, { type: 'auctionRefuse', player: 2 }); // out of turn order: answers are simultaneous
+    assert.throws(() => act(s, { type: 'auctionRefuse', player: 2 }), /Not your move/);
+    act(s, { type: 'auctionOffer', player: 1, space: b });
     assert.equal(s.turn.stage, 'auctionConfirm');
     const cash = s.players.map((p) => p.cash);
     doAct(s, 'auctionConfirm', { from: 1 });
     assert.equal(s.props[a].owner, 1);
     assert.equal(s.props[b].owner, 0);
-    assert.deepEqual(s.players.map((p) => p.cash), cash);
+    assert.deepEqual(s.players.map((p) => p.cash), cash.map((m, k) => m + (k < 2 ? CONFIG.swapBonus : 0)));
     assert.equal(s.props[a].tradeCount, 1);
   });
   test('lander may decline all offers (§13.1)', () => {
@@ -689,15 +791,20 @@ describe('Auction swap', () => {
     doAct(s, 'auctionConfirm', { from: 1 });
     assert.equal(cityRent(s, s.props[cs[0]]), Math.floor(s.props[cs[0]].price * 0.1) * 2);
   });
-  test('online timers: no answer refuses, lander timeout declines (FR-115)', () => {
+  test('timers: when time runs out the rest refuse; then the lander\'s offers expire (FR-115)', () => {
     const { s, auction } = auctionGame();
-    const [a] = A(s); const [b] = B(s);
-    give(s, 0, a); give(s, 1, b);
+    const [a] = A(s); const [b] = B(s); const [c] = A(s, 3);
+    give(s, 0, a); give(s, 1, b); give(s, 2, c);
     rollTo(s, 0, auction, [1]);
     doAct(s, 'auctionPick', { space: a });
-    assert.deepEqual(timeoutAction(s), { type: 'auctionRefuse', player: 1 });
-    doAct(s, 'auctionOffer', { space: b });
-    assert.deepEqual(timeoutAction(s), { type: 'auctionDecline', player: 0 });
+    act(s, { type: 'auctionOffer', player: 2, space: c });
+    assert.deepEqual(timeoutAction(s), { type: 'expire', system: true });
+    act(s, timeoutAction(s)); // player 1 never answered
+    assert.equal(s.turn.stage, 'auctionConfirm');
+    assert.deepEqual(s.turn.auction.refused, [1]);
+    act(s, timeoutAction(s));
+    assert.equal(s.props[a].owner, 0);
+    assert.equal(s.turn.active, 1);
   });
 });
 
@@ -726,7 +833,7 @@ describe('Chance', () => {
     assert.equal(s.spaces[s.players[0].pos].kind, 'utility');
     assert.equal(s.turn.stage, 'buy');
     const u = s.players[0].pos;
-    doAct(s, 'decline');
+    finishStage(s);
     give(s, 2, u);
     draw(s, 1, 'CH-02');
     doAct(s, 'dismissCard');
@@ -737,7 +844,7 @@ describe('Chance', () => {
     draw(s, 0, 'CH-03');
     doAct(s, 'dismissCard');
     assert.equal(s.turn.stage, 'buy');
-    doAct(s, 'decline');
+    finishStage(s);
     for (const x of Object.values(s.props)) if (x.kind === 'city') x.owner = 1;
     draw(s, 1, 'CH-03');
     const pos = s.players[1].pos;
@@ -764,7 +871,7 @@ describe('Chance', () => {
     draw(s, 1, 'CH-06');
     const f2 = s.players[1].pos;
     doAct(s, 'dismissCard');
-    assert.equal(s.players[1].pos, (f2 + 5) % 45);
+    assert.equal(s.players[1].pos, (f2 + 5) % s.spaces.length);
   });
   test('movement cards pay salary when passing Start (FR-131)', () => {
     const s = game(4);
@@ -772,7 +879,7 @@ describe('Chance', () => {
     s.chance.deck = ['CH-06', ...s.chance.deck.filter((c) => c !== 'CH-06')];
     // put chance corner close to the end: emulate by moving the player there and drawing directly
     rollTo(s, 0, chance, [1]);
-    s.players[0].pos = 42; // 42 + 5 passes Start
+    s.players[0].pos = s.spaces.length - 3; // + 5 passes Start
     const cash = s.players[0].cash;
     doAct(s, 'dismissCard');
     assert.equal(s.players[0].pos, 2);

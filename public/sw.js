@@ -1,6 +1,6 @@
 // Service worker: makes the game installable and lets pass-and-play run offline (FR-002, NFR-005).
 // Bump VERSION whenever the shell file list changes; other files refresh in the background.
-const VERSION = 'gb-v11';
+const VERSION = 'gb-v12';
 const SHELL = [
   '/',
   '/index.html',

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { CONFIG, MODES } from '../shared/config.js';
-import { createGame, act, whoActs, botAction, timeoutAction, RuleError } from '../shared/engine.js';
+import { createGame, act, actorsNow, botAction, timeoutAction, RuleError } from '../shared/engine.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
@@ -68,11 +68,27 @@ function apply(room, action) {
   broadcast(room, events);
 }
 
+// Seconds on the clock for timed stages, and what restarts the clock: swap offers run one 90 s clock for
+// everyone; bidding restarts its clock with every new bid.
+function clockFor(st) {
+  if (st.phase !== 'turn') return null;
+  const t = st.turn;
+  const base = `${st.turnNo}|${t.stage}`;
+  if (t.stage === 'auctionRespond') return { key: `${base}|${t.auction.offered}`, secs: CONFIG.auctionResponseSeconds };
+  if (t.stage === 'auctionConfirm') return { key: `${base}|${t.auction.offered}`, secs: CONFIG.auctionConfirmSeconds };
+  if (t.stage === 'bid') return { key: `${base}|${t.bid.space}|${t.bid.round}`, secs: CONFIG.bidAuction.seconds };
+  return null;
+}
+
 function afterChange(room) {
   clearTimeout(room.botTimer);
-  clearTimeout(room.deadlineTimer);
-  room.deadline = null;
   const st = room.state;
+  const clock = st && st.phase !== 'ended' ? clockFor(st) : null;
+  if (!clock || clock.key !== room.clockKey) {
+    clearTimeout(room.deadlineTimer);
+    room.deadline = null;
+    room.clockKey = clock?.key ?? null;
+  }
   if (!st || st.phase === 'ended') return;
   // FR-004: control returns to a rejoined player at the start of their next turn.
   for (const [i, seat] of room.seats.entries()) {
@@ -80,23 +96,22 @@ function afterChange(room) {
     const backAtTurnStart = st.phase === 'turn' && st.turn.active === i && st.turnNo > seat.rejoinedAtTurn;
     if (st.phase !== 'turn' || backAtTurnStart) seat.bot = false;
   }
-  const actor = whoActs(st);
-  if (actor == null) return;
-  if (room.seats[actor].bot) {
+  // Swap offers and bids are simultaneous, so any of several seats may be a bot that has to act.
+  const botSeat = actorsNow(st).find((i) => room.seats[i].bot);
+  if (botSeat != null) {
     room.botTimer = setTimeout(() => {
-      try { apply(room, botAction(room.state, actor)); } catch (e) { console.error('bot error', e); }
+      try { apply(room, botAction(room.state, botSeat)); } catch (e) { console.error('bot error', e); }
     }, BOT_DELAY_MS);
-    return;
   }
-  // FR-115: auction timers online
-  const stage = st.phase === 'turn' ? st.turn.stage : null;
-  const secs = stage === 'auctionRespond' ? CONFIG.auctionResponseSeconds : stage === 'auctionConfirm' ? CONFIG.auctionConfirmSeconds : 0;
-  if (secs) {
-    room.deadline = Date.now() + secs * 1000;
+  // FR-115: timers online
+  if (clock && !room.deadline) {
+    room.deadline = Date.now() + clock.secs * 1000;
     room.deadlineTimer = setTimeout(() => {
+      room.deadline = null;
+      room.clockKey = null;
       const a = timeoutAction(room.state);
       if (a) try { apply(room, a); } catch (e) { console.error('timeout error', e); }
-    }, secs * 1000);
+    }, clock.secs * 1000);
   }
 }
 
@@ -174,7 +189,7 @@ io.on('connection', (socket) => {
     if (seatIdx < 0) return cb({ ok: false, error: 'Not seated' });
     if (room.seats[seatIdx].bot) return cb({ ok: false, error: 'The bot is playing for you until your next turn' });
     try {
-      apply(room, { ...action, player: seatIdx }); // FR-173: server validates every action
+      apply(room, { ...action, system: false, player: seatIdx }); // FR-173: server validates every action; timers are server-only
       cb({ ok: true });
     } catch (e) {
       if (!(e instanceof RuleError)) console.error(e);

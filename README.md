@@ -21,7 +21,7 @@ online rooms need a connection. Bump `VERSION` in `sw.js` when you add or rename
 ```bash
 npm install
 npm start          # http://localhost:3000  (PORT=3100 npm start for another port)
-npm test           # 97 rules + online integration tests
+npm test           # rules + online integration tests
 npm run simulate   # bot-only balance runs: rounds, minutes, end reasons per player count/mode
 ```
 
@@ -77,10 +77,21 @@ This rewrites `public/cards/*.svg`. Card drawing lives in `public/js/cards.js` (
 - Turns end on their own as soon as the roll is resolved (no End turn button). Build, sell, mortgage and
   unmortgage happen on your own turn before you roll, or while a doubles re-roll is pending.
 
-- The board is one fixed 45-space world circuit for every player count (not the PRD's one-side-per-player polygon):
-  12 colour sets of 2-4 cities (33 cities), 6 utilities and 6 corners (Start, Auction, Jail, Chance, Tax, Shopping Center).
+- The board is one fixed 47-space world circuit for every player count (not the PRD's one-side-per-player polygon):
+  12 colour sets of 2-4 cities (33 cities), 6 utilities and 8 corners (Start, 3 Auctions, Jail, Chance, Tax, Shopping Center).
   Set prices rise along the board from 1,000 to 4,000. The layout lives in `BOARD_LAYOUT` in `shared/content.js`.
 - Festival and Climate Event corners are removed. Everyone rolls 2 dice (`CONFIG.dice`); vehicles are on every board.
+- Dice (`CONFIG.diceTuning`): online and unseeded games use the crypto RNG; totals are flatter than plain 2d6, doubles come up
+  about 28% of the time, a player never repeats the previous total unless a re-draw lands on it, and double six pays a 1,000 jackpot.
+- City rent before buildings is 10% of the price times how many cities of that set the owner holds (2 -> x2, 3 -> x3, 4 -> x4).
+  Owned cards show the rent due (green pill) instead of the price.
+- Utilities (Hydro Dam, Oil Refinery, Solar Farm) and Travel (High-Speed Rail, Seaport, Airport) are two separate sets of three;
+  rent counts only the owner's holdings in the same set.
+- Declining a purchase sends it to auction: the other players bid at the same time from a random 20-50% discount
+  (`CONFIG.bidAuction`), the clock (20 s) restarts with every bid, the winner pays the bank and the player who declined collects
+  a random 10-15% of the winning bid. No bids: it stays unowned.
+- Swap auctions (Auction corners): every other player picks an offer at the same time within 90 s; a completed swap pays both
+  players 1,000 (`CONFIG.swapBonus`). Simultaneous stages use `actorsNow` in the engine; timers send a server-only `expire` action.
 - Camera: the game plays in a close-up. Every viewer's camera pans to the active player and follows the pawn when the dice are rolled, in pass-and-play and online alike. Pinch/scroll/drag at any time; 📍 returns to your pawn, 🗺️ toggles the whole board. A manual close zoom is remembered as the play zoom.
 - Landmarks and utility scenes are hidden until someone buys the property, then rise out of the ground with confetti (they disappear again if the property returns to the bank). The figure beside the tile uses the card's own landmark art as a camera-facing cut-out, and once bought the card's art panel shows the owner's character instead.
 - Characters stand on the tiles without a base plate (player colour shows on the HUD, cards and flags). Each one moves in its own style, set in `STYLES` in `characters.js`: Redline drives and idles on its suspension, Bug skitters with buzzing wings, Moko floats on its cloud, Scorch and Talon hover and flap, Override stomps, Mort shambles, Ronin breathes in a ready stance. The art is a single cut-out per expression, so animation is body motion plus bending (lean, sway, wing beat), not separately rigged limbs.
@@ -92,7 +103,7 @@ This rewrites `public/cards/*.svg`. Card drawing lives in `public/js/cards.js` (
 - Turns: a short pause after each turn, then online a big "Your turn!" / "Ben's turn" splash (pass-and-play has the hand-off screen). A bottom-centre turn bar says "Your turn" (tap it to roll) or who everyone is waiting for. Every pawn hop takes 0.4 s (`HOP_MS` in `board.js`).
 - The side rails float, see-through, over a full-size board on every screen size.
 - Cards never overlap: `buildTrack` packs spaces so each one only starts where it clears the ones already placed (spacing opens up on bends) and enlarges the circuit until all 45 fit.
-- Transport (High-Speed Rail, Seaport, Airport): landing on one owned by someone else offers three trips (short 3-8, medium 9-16, long 17-28 spaces, never to Jail or another transport hub). The lander picks one, pays the owner a fare per space (utility rent x `travelFareRate`, so 50 per space with one utility), travels there (passing Start pays salary) and resolves that space. Hydro Dam, Oil Refinery and Solar Farm still charge flat rent.
+- Transport (High-Speed Rail, Seaport, Airport): landing on one owned by someone else offers paying the flat rent and staying, or three trips (short 3-8, medium 9-16, long 17-28 spaces, never to Jail or another transport hub). The lander picks one, pays the owner a fare per space (utility rent x `travelFareRate`, so 50 per space with one utility), travels there (passing Start pays salary) and resolves that space. Hydro Dam, Oil Refinery and Solar Farm still charge flat rent.
 
 - Debt is settled automatically per Appendix B.7: cheapest building sold first, then cheapest property mortgaged.
 - The engine's event-feed messages are still inline English; only the UI chrome is in `strings.js`.

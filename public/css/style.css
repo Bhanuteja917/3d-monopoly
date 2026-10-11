@@ -235,6 +235,7 @@ input {
 .pc-name span { line-height: 1; color: #fff; -webkit-text-stroke: calc(6 * var(--u)) var(--ink); paint-order: stroke fill; text-shadow: 0 calc(3 * var(--u)) 0 var(--ink); white-space: nowrap; }
 .pc-foot { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: calc(8 * var(--u)); padding: 0 calc(12 * var(--u)); background: #fff; border-top: calc(4 * var(--u)) solid var(--ink); }
 .pc-price { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: calc(3 * var(--u)) calc(12 * var(--u)) calc(3 * var(--u)) calc(3 * var(--u)); border-radius: 999px; background: #FFD43B; border: calc(4 * var(--u)) solid var(--ink); box-shadow: 0 calc(4 * var(--u)) 0 var(--ink); font-size: calc(22 * var(--u)); line-height: 1; }
+.pc-price.rent { background: #7BD389; font-size: calc(19 * var(--u)); }
 .pc-price svg { width: calc(26 * var(--u)); height: calc(26 * var(--u)); }
 .pc-pips { display: flex; gap: calc(4 * var(--u)); flex-wrap: wrap; justify-content: flex-end; }
 .pc-pips i { width: calc(18 * var(--u)); height: calc(18 * var(--u)); box-sizing: border-box; border-radius: 50%; border: calc(3 * var(--u)) solid var(--ink); }
@@ -251,6 +252,20 @@ input {
 .prop-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-top: 10px; font-size: 12px; font-weight: 800; color: #6b5d80; }
 .prop-meta b { display: block; color: #1A0F14; font-family: var(--font-display); font-weight: 400; font-size: 15px; }
 .pick-list { display: grid; gap: 8px; }
+/* Bidding panel: one row per bidder, buttons on the rows that may bid */
+.bid-head { margin-top: 10px; }
+.bid-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.bid-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 14px; background: var(--card); color: var(--card-ink); border: 3px solid var(--ink); border-left: 10px solid var(--c); }
+.bid-row.high { background: #fff6cf; }
+.bid-row.out { opacity: 0.55; }
+.bid-row .grow { flex: 1; min-width: 90px; }
+.bid-row b { display: block; font-size: 16px; }
+.bid-row small { color: #6b5d80; font-size: 12px; }
+.bid-av { width: 40px; height: 40px; border-radius: 50%; background: var(--c); border: 2px solid var(--ink); overflow: hidden; flex: none; }
+.bid-av img { width: 100%; height: 100%; object-fit: contain; }
+.bid-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.bid-btns .btn-small { font-size: 15px; min-height: 36px; padding: 5px 10px 7px; }
+.bid-tag { font-weight: 800; color: #6b5d80; }
 .pick-item {
   --c: #888; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 14px; border: 3px solid var(--ink);
   background: var(--card); color: var(--card-ink); cursor: pointer; text-align: left; box-shadow: 0 3px 0 var(--ink); width: 100%;
