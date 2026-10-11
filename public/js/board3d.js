@@ -42,66 +42,37 @@ function wrapText(ctx, text, maxW) {
   return lines;
 }
 
-function drawIcon(ctx, type, cx, cy, size) {
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
-  const icon = { chance: '❓', chest: '🎁', railroad: '🚂', tax: '💰', utility: '' }[type] ?? '';
-  ctx.fillText(icon, cx, cy);
-  ctx.restore();
-}
+const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 
 function makeBoardTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = TEX;
   const ctx = c.getContext('2d');
-  const bg = '#cfe8d0';
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, TEX, TEX);
-  const ink = '#1b2a1f';
-  const font = (px, w = 700) => `${w} ${px}px "Trebuchet MS", "Segoe UI", Roboto, sans-serif`;
+  const sep = '#ffffff', frame = '#e9eef2', ink = '#2b2f36', muted = '#8a929c';
+  const font = (px, w = 900) => `${w} ${px}px "Nunito", "Trebuchet MS", "Segoe UI", Roboto, sans-serif`;
+  const emoji = (ch, x, y, size) => { ctx.font = `${size}px ${EMOJI_FONT}`; ctx.fillText(ch, x, y); };
+  const pill = (text, x, y, color) => {
+    ctx.font = font(30);
+    const w = ctx.measureText(text).width + 36;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.roundRect(x - w / 2, y - 22, w, 44, 22); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, x, y + 2);
+  };
 
-  // Center
-  ctx.save();
-  ctx.translate(TEX / 2, TEX / 2);
-  ctx.rotate(-Math.PI / 4);
-  ctx.fillStyle = '#c62828';
-  const bw = 900, bh = 200;
-  ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 10;
-  ctx.strokeRect(-bw / 2 + 14, -bh / 2 + 14, bw - 28, bh - 28);
-  ctx.fillStyle = '#fff';
-  ctx.font = font(130, 900);
+  ctx.fillStyle = sep;
+  ctx.fillRect(0, 0, TEX, TEX);
+
+  // center panel with a big illustration
+  ctx.fillStyle = '#c8d5de';
+  ctx.beginPath(); ctx.roundRect(2 * PX + 24, 2 * PX + 24, 9 * PX - 48, 9 * PX - 48, 24); ctx.fill();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('MONOPOLY', 0, 8);
-  ctx.restore();
+  emoji('🏛️', TEX / 2, TEX / 2 - 60, 420);
+  ctx.fillStyle = '#7f95a6';
+  ctx.font = font(96);
+  ctx.fillText('MONOPOLY', TEX / 2, TEX / 2 + 260);
 
-  // Card piles in the center
-  const pile = (x, y, rot, color, label) => {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rot);
-    ctx.fillStyle = color;
-    ctx.fillRect(-150, -95, 300, 190);
-    ctx.setLineDash([14, 10]);
-    ctx.strokeStyle = ink;
-    ctx.lineWidth = 5;
-    ctx.strokeRect(-150, -95, 300, 190);
-    ctx.fillStyle = ink;
-    ctx.font = font(36);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
-  };
-  pile(TEX / 2 - 380, TEX / 2 - 380, -Math.PI / 4, '#ffd8a8', 'CHANCE');
-  pile(TEX / 2 + 380, TEX / 2 + 380, -Math.PI / 4 + Math.PI, '#bde3ff', 'COMMUNITY CHEST');
-
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = ink;
   TILES.forEach((t, i) => {
     const [x, z] = tileCenter(i);
     const cx = (x + HALF) * PX, cy = (z + HALF) * PX;
@@ -112,149 +83,67 @@ function makeBoardTexture() {
     ctx.textBaseline = 'middle';
     if (i % 10 === 0) {
       const s = 2 * PX;
-      ctx.strokeRect(-s / 2, -s / 2, s, s);
-      ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = ink;
-      if (t.type === 'go') {
-        ctx.fillStyle = '#c62828';
-        ctx.font = font(120, 900);
-        ctx.fillText('GO', 0, 10);
-        ctx.font = font(30);
-        ctx.fillStyle = ink;
-        ctx.fillText('COLLECT $200', 0, -80);
-        ctx.fillStyle = '#c62828';
-        ctx.font = font(80, 900);
-        ctx.fillText('➜', 0, 95);
-      } else if (t.type === 'jail') {
-        ctx.rotate(-Math.PI / 4);
-        // jail cell occupies the inner part of the corner
-        const cell = 1.3 * PX;
-        ctx.fillStyle = '#ff9f43';
-        ctx.fillRect(s / 2 - cell, -s / 2, cell, cell);
-        ctx.strokeRect(s / 2 - cell, -s / 2, cell, cell);
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 8;
-        for (let k = 1; k < 5; k++) {
-          const bx = s / 2 - cell + (cell * k) / 5;
-          ctx.beginPath(); ctx.moveTo(bx, -s / 2 + 10); ctx.lineTo(bx, -s / 2 + cell - 10); ctx.stroke();
+      ctx.fillStyle = '#f6f8fa';
+      ctx.fillRect(-s / 2 + 4, -s / 2 + 4, s - 8, s - 8);
+      if (t.type === 'jail') {
+        ctx.rotate(-[0, Math.PI / 2, Math.PI, -Math.PI / 2][1]); // keep the cell on the inner corner
+        const cell = 1.25 * PX;
+        for (let k = 0; k < 7; k++) {
+          ctx.fillStyle = k % 2 ? '#9aa6b2' : '#d7dde3';
+          ctx.fillRect(s / 2 - cell + (k * cell) / 7 - 4, -s / 2 + 4, cell / 7, cell);
         }
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = ink;
-        ctx.fillStyle = ink;
-        ctx.font = font(40, 900);
-        ctx.fillText('IN JAIL', s / 2 - cell / 2, -s / 2 + cell / 2);
-        ctx.font = font(30);
-        ctx.fillText('JUST', -s / 2 + 0.35 * PX, -20);
-        ctx.fillText('VISITING', 0, s / 2 - 0.35 * PX);
-      } else if (t.type === 'parking') {
-        ctx.font = font(34);
-        ctx.fillText('FREE', 0, -95);
-        ctx.font = '110px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-        ctx.fillText('🚗', 0, 5);
-        ctx.font = font(34);
-        ctx.fillText('PARKING', 0, 105);
+        emoji('🔒', s / 2 - cell / 2 - 4, -s / 2 + cell / 2, 70);
+        pill('JAIL', -s / 2 + 0.55 * PX, s / 2 - 0.4 * PX, '#9aa6b2');
       } else {
-        ctx.font = font(34);
-        ctx.fillText('GO TO', 0, -95);
-        ctx.font = '110px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-        ctx.fillText('👮', 0, 5);
-        ctx.font = font(34);
-        ctx.fillText('JAIL', 0, 105);
+        ctx.rotate(Math.PI / 4);
+        const [icon, label, color] = {
+          go: ['⬅️', 'GO  +$200', '#2fb36b'], parking: ['🅿️', 'FREE PARKING', '#9aa6b2'], gotojail: ['👮', 'GO TO JAIL', '#e5484d'],
+        }[t.type];
+        emoji(icon, 0, -30, 120);
+        pill(label, 0, 75, color);
       }
       ctx.restore();
       return;
     }
     const w = PX, h = 2 * PX;
-    ctx.strokeRect(-w / 2, -h / 2, w, h);
-    let top = -h / 2;
-    if (t.type === 'property') {
-      const band = 0.45 * PX;
-      ctx.fillStyle = GROUP_COLORS[t.group];
-      ctx.fillRect(-w / 2, -h / 2, w, band);
-      ctx.strokeRect(-w / 2, -h / 2, w, band);
-      top += band;
+    const prop = t.type === 'property';
+    ctx.fillStyle = prop ? GROUP_COLORS[t.group] : frame;
+    ctx.fillRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8);
+    const dark = prop && ['yellow', 'lightblue'].includes(t.group);
+    const price = t.price ? `$${t.price}` : t.amount ? `-$${t.amount}` : '';
+    if (price) {
+      ctx.font = font(34);
+      ctx.fillStyle = prop ? (dark ? ink : '#fff') : t.type === 'tax' ? '#e5484d' : muted;
+      ctx.fillText(price, 0, -h / 2 + 44);
     }
-    ctx.fillStyle = ink;
-    ctx.font = font(23);
-    const lines = wrapText(ctx, t.name.toUpperCase(), w - 16);
-    lines.forEach((ln, k) => ctx.fillText(ln, 0, top + 24 + k * 26));
-    if (t.type !== 'property') drawIcon(ctx, t.type, 0, 15, 70);
-    if (t.type === 'utility') {
-      ctx.font = '70px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-      ctx.fillText(t.name.startsWith('Electric') ? '💡' : '🚰', 0, 15);
-    }
-    if (t.price || t.amount) {
-      ctx.font = font(26, 600);
-      ctx.fillText(t.price ? `$${t.price}` : `PAY $${t.amount}`, 0, h / 2 - 26);
-    }
+    const icon = { railroad: '🚂', chance: '❓', chest: '🎁', tax: '💰' }[t.type]
+      ?? (t.type === 'utility' ? (t.name.startsWith('Electric') ? '💡' : '🚰') : '');
+    if (icon) emoji(icon, 0, 10, 72);
+    ctx.fillStyle = prop ? (dark ? ink : '#fff') : ink;
+    ctx.font = font(prop ? 25 : 21);
+    const label = { chance: 'CHANCE', chest: 'CHEST' }[t.type] ?? t.name.toUpperCase();
+    const lines = wrapText(ctx, label, w - 18);
+    const top = prop ? -10 : h / 2 - 30 - (lines.length - 1) * 26;
+    lines.forEach((ln, k) => ctx.fillText(ln, 0, top + k * 28));
     ctx.restore();
   });
-
-  ctx.strokeStyle = ink;
-  ctx.lineWidth = 8;
-  ctx.strokeRect(4, 4, TEX - 8, TEX - 8);
-  ctx.strokeRect(2 * PX, 2 * PX, 9 * PX, 9 * PX);
   return c;
 }
 
 // ---------- tokens ----------
 function makeToken(kind, color) {
+  // White puck with a colored top, like a game counter.
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.55, roughness: 0.3 });
-  const add = (geo, x = 0, y = 0, z = 0, m = mat) => {
-    const mesh = new THREE.Mesh(geo, m);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = true;
-    g.add(mesh);
-    return mesh;
-  };
-  const dark = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });
-  switch (kind) {
-    case 'car':
-      add(new THREE.BoxGeometry(0.34, 0.1, 0.18), 0, 0.09, 0);
-      add(new THREE.BoxGeometry(0.18, 0.09, 0.16), -0.02, 0.18, 0);
-      for (const [x, z] of [[0.11, 0.09], [-0.11, 0.09], [0.11, -0.09], [-0.11, -0.09]]) {
-        add(new THREE.CylinderGeometry(0.045, 0.045, 0.04, 12), x, 0.045, z, dark).rotation.x = Math.PI / 2;
-      }
-      break;
-    case 'hat':
-      add(new THREE.CylinderGeometry(0.18, 0.18, 0.025, 24), 0, 0.012, 0);
-      add(new THREE.CylinderGeometry(0.11, 0.12, 0.26, 24), 0, 0.15, 0);
-      add(new THREE.CylinderGeometry(0.122, 0.122, 0.04, 24), 0, 0.06, 0, dark);
-      break;
-    case 'rocket':
-      add(new THREE.CylinderGeometry(0.07, 0.08, 0.26, 16), 0, 0.17, 0);
-      add(new THREE.ConeGeometry(0.07, 0.13, 16), 0, 0.365, 0);
-      for (let k = 0; k < 3; k++) {
-        const fin = add(new THREE.BoxGeometry(0.02, 0.1, 0.1), 0, 0.07, 0, dark);
-        fin.position.set(Math.cos((k * 2 * Math.PI) / 3) * 0.08, 0.07, Math.sin((k * 2 * Math.PI) / 3) * 0.08);
-        fin.rotation.y = -(k * 2 * Math.PI) / 3;
-      }
-      break;
-    case 'pawn':
-      add(new THREE.CylinderGeometry(0.1, 0.14, 0.06, 24), 0, 0.03, 0);
-      add(new THREE.ConeGeometry(0.1, 0.24, 24), 0, 0.17, 0);
-      add(new THREE.SphereGeometry(0.075, 20, 16), 0, 0.31, 0);
-      break;
-    case 'gem':
-      add(new THREE.OctahedronGeometry(0.15), 0, 0.17, 0).scale.set(1, 1.3, 1);
-      break;
-    case 'crown': {
-      add(new THREE.CylinderGeometry(0.13, 0.12, 0.12, 20, 1, true), 0, 0.08, 0).material = mat.clone();
-      g.children.at(-1).material.side = THREE.DoubleSide;
-      for (let k = 0; k < 5; k++) {
-        const a = (k / 5) * Math.PI * 2;
-        add(new THREE.ConeGeometry(0.035, 0.09, 8), Math.cos(a) * 0.12, 0.18, Math.sin(a) * 0.12);
-        add(new THREE.SphereGeometry(0.022, 8, 8), Math.cos(a) * 0.12, 0.235, Math.sin(a) * 0.12,
-          new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.2, roughness: 0.1 }));
-      }
-      break;
-    }
-  }
-  // colored ring base so every piece is easy to identify
-  const ring = add(new THREE.TorusGeometry(0.17, 0.02, 8, 32), 0, 0.01, 0,
-    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4 }));
-  ring.rotation.x = Math.PI / 2;
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+  const top = new THREE.MeshStandardMaterial({ color, roughness: 0.3, emissive: color, emissiveIntensity: 0.15 });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.21, 0.14, 32), white);
+  base.position.y = 0.07;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.02, 32), top);
+  cap.position.y = 0.15;
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.15, 32, 12, 0, Math.PI * 2, 0, Math.PI / 5), top);
+  dome.position.y = 0.04;
+  base.castShadow = cap.castShadow = true;
+  g.add(base, cap, dome);
   return g;
 }
 
@@ -309,8 +198,8 @@ export class Board3D {
     this.renderer = renderer;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x14202b);
-    scene.fog = new THREE.Fog(0x14202b, 30, 60);
+    scene.background = new THREE.Color(0x45464c);
+    scene.fog = new THREE.Fog(0x45464c, 30, 60);
     this.scene = scene;
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
@@ -330,14 +219,14 @@ export class Board3D {
 
     // table
     const table = new THREE.Mesh(new THREE.CircleGeometry(40, 48),
-      new THREE.MeshStandardMaterial({ color: 0x2b3a46, roughness: 0.9 }));
+      new THREE.MeshStandardMaterial({ color: 0x3a3b41, roughness: 0.9 }));
     table.rotation.x = -Math.PI / 2;
     table.receiveShadow = true;
     scene.add(table);
 
     // board body + printed top
     const body = new THREE.Mesh(new THREE.BoxGeometry(13.4, TOP_Y, 13.4),
-      new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.7 }));
+      new THREE.MeshStandardMaterial({ color: 0xc3ccd4, roughness: 0.6 }));
     body.position.y = TOP_Y / 2 - 0.001;
     body.castShadow = true;
     body.receiveShadow = true;
@@ -389,7 +278,8 @@ export class Board3D {
 
     this.resize();
     this.resetView();
-    new ResizeObserver(() => this.resize()).observe(container);
+    this.resizeObs = new ResizeObserver(() => this.resize());
+    this.resizeObs.observe(container);
     this.clock = new THREE.Clock();
     renderer.setAnimationLoop(() => this.frame());
   }
@@ -410,6 +300,18 @@ export class Board3D {
     this.controls.update();
   }
 
+  dispose() {
+    this.disposed = true;
+    this.renderer.setAnimationLoop(null);
+    for (const tw of this.tweens) tw.done();
+    this.tweens = [];
+    this.resizeObs.disconnect();
+    this.controls.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
+    this.renderer.domElement.remove();
+  }
+
   frame() {
     const now = performance.now();
     this.tweens = this.tweens.filter((tw) => {
@@ -420,7 +322,7 @@ export class Board3D {
     });
     const t = this.clock.getElapsedTime();
     for (const tok of this.tokens.values()) {
-      if (tok.active) tok.mesh.rotation.y = t * 1.2;
+      tok.mesh.scale.setScalar(tok.active ? 1.15 + 0.1 * Math.sin(t * 5) : 1.1);
     }
     if (this.highlight.visible) this.highlight.material.opacity = 0.18 + 0.12 * Math.sin(t * 4);
     this.controls.update();
@@ -428,6 +330,7 @@ export class Board3D {
   }
 
   tween(dur, fn) {
+    if (this.disposed) return Promise.resolve();
     return new Promise((done) => this.tweens.push({ start: performance.now(), dur, fn, done }));
   }
 
@@ -539,7 +442,6 @@ export class Board3D {
       const tok = this.tokens.get(p.id);
       tok.mesh.visible = !p.bankrupt;
       tok.active = idx === state.turn && state.phase !== 'over';
-      if (!tok.active) tok.mesh.rotation.y = 0;
       if (tokens && (tok.pos !== p.pos || tok.inJail !== p.inJail)) this.placeToken(p.id, p.pos, p.inJail);
     });
     const colorOf = Object.fromEntries(state.players.map((p) => [p.id, p.color]));

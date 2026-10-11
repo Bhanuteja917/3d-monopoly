@@ -6,7 +6,7 @@ import {
 
 const AUCTION_MS = 15000;
 const MAX_LOG = 80;
-const MAX_EVENTS = 20;
+const MAX_EVENTS = 60;
 
 const shuffle = (arr) => {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -34,7 +34,7 @@ export class Game {
     this.props = {};
     for (const i of OWNABLE) this.props[i] = { owner: null, houses: 0, mortgaged: false };
     this.turn = 0;
-    this.phase = 'roll'; // roll | buy | auction | debt | end | over
+    this.phase = 'roll'; // roll | buy | auction | debt | over
     this.dice = [1, 1];
     this.doubles = 0;
     this.extraRoll = false;
@@ -68,6 +68,8 @@ export class Game {
     this.events.push({ id: ++this.eventSeq, ...e });
     if (this.events.length > MAX_EVENTS) this.events.shift();
   }
+  /** Something worth announcing to every player (rent, jail, purchases…). Rendered by the client. */
+  note(kind, data = {}) { this.event({ type: 'note', kind, ...data }); }
   ownedBy(id) { return OWNABLE.filter((i) => this.props[i].owner === id); }
   ownsGroup(id, group) { return GROUPS[group].every((i) => this.props[i].owner === id); }
   groupHasHouses(i) {
@@ -104,13 +106,21 @@ export class Game {
     if (phases.length && !phases.includes(this.phase)) fail('You cannot do that right now.');
   }
 
-  /** Decide what happens after the current player's action has fully resolved. */
+  /**
+   * Decide what happens after the current player's action has fully resolved.
+   * The turn passes automatically unless the player rolled doubles.
+   */
   proceed() {
     if (this.phase === 'over') return;
-    if (this.active().some((p) => p.money < 0)) { this.phase = 'debt'; return; }
+    const debtors = this.active().filter((p) => p.money < 0);
+    if (debtors.length) {
+      if (this.phase !== 'debt') for (const d of debtors) this.note('debt', { player: d.id, amount: -d.money });
+      this.phase = 'debt';
+      return;
+    }
     const p = this.cur();
-    if (p.bankrupt) return this.nextTurn();
-    this.phase = this.extraRoll && !p.inJail ? 'roll' : 'end';
+    if (p.bankrupt || !this.extraRoll || p.inJail) return this.nextTurn();
+    this.phase = 'roll';
   }
 
   nextTurn() {
@@ -136,35 +146,41 @@ export class Game {
       if (dbl) {
         p.inJail = false; p.jailTurns = 0;
         this.addLog(`${p.name} rolled doubles and leaves Jail.`);
+        this.note('jailOut', { player: p.id, how: 'doubles' });
       } else if (++p.jailTurns >= 3) {
         this.pay(p, null, JAIL_FINE, 'jail fine');
         p.inJail = false; p.jailTurns = 0;
+        this.note('jailOut', { player: p.id, how: 'forced', amount: JAIL_FINE });
       } else {
         this.addLog(`${p.name} stays in Jail.`);
+        this.note('jailStay', { player: p.id, tries: p.jailTurns });
         return this.proceed();
       }
     } else if (dbl) {
       if (++this.doubles === 3) {
         this.addLog(`${p.name} rolled doubles three times — speeding to Jail!`);
-        this.sendToJail(p);
+        this.sendToJail(p, 'doubles');
         return this.proceed();
       }
       this.extraRoll = true;
+      this.note('doubles', { player: p.id });
     } else {
       this.extraRoll = false;
     }
     this.moveBy(p, d[0] + d[1]);
-    if (this.phase !== 'buy') this.proceed();
+    if (this.phase !== 'buy' && this.phase !== 'auction') this.proceed();
   }
 
   walkTo(p, to, collectGo = true) {
     const from = p.pos;
-    if (collectGo && to < from) {
+    const passedGo = collectGo && to < from;
+    if (passedGo) {
       p.money += GO_SALARY;
       this.addLog(`${p.name} passed GO and collected ${money(GO_SALARY)}.`);
     }
     p.pos = to;
     this.event({ type: 'move', player: p.id, from, to, kind: 'walk' });
+    if (passedGo) this.note('go', { player: p.id, amount: GO_SALARY });
   }
 
   moveBy(p, n, opts) {
@@ -172,12 +188,13 @@ export class Game {
     this.land(p, opts);
   }
 
-  sendToJail(p) {
+  sendToJail(p, why = 'tile') {
     const from = p.pos;
     p.pos = 10; p.inJail = true; p.jailTurns = 0;
     this.extraRoll = false; this.doubles = 0;
     this.event({ type: 'move', player: p.id, from, to: 10, kind: 'jump' });
     this.addLog(`${p.name} went to Jail.`);
+    this.note('jail', { player: p.id, why });
   }
 
   land(p, opts = {}) {
@@ -186,15 +203,29 @@ export class Game {
     switch (t.type) {
       case 'property': case 'railroad': case 'utility': {
         const pr = this.props[i];
-        if (!pr.owner) { this.phase = 'buy'; return; }
+        if (!pr.owner) {
+          this.phase = 'buy';
+          // e.g. a forced jail fine left them in debt: they can't buy, so it goes straight to auction
+          if (p.money < 0) this.startAuction(p.id);
+          return;
+        }
         if (pr.owner === p.id) return;
-        if (pr.mortgaged) { this.addLog(`${t.name} is mortgaged — no rent.`); return; }
+        if (pr.mortgaged) {
+          this.addLog(`${t.name} is mortgaged — no rent.`);
+          this.note('noRent', { player: p.id, prop: i });
+          return;
+        }
         const owner = this.player(pr.owner);
-        this.pay(p, owner, this.rent(i, opts), `rent for ${t.name}`);
+        const rent = this.rent(i, opts);
+        this.pay(p, owner, rent, `rent for ${t.name}`);
+        this.note('rent', { player: p.id, to: owner.id, amount: rent, prop: i });
         return;
       }
-      case 'tax': return this.pay(p, null, t.amount, t.name);
-      case 'gotojail': return this.sendToJail(p);
+      case 'tax':
+        this.pay(p, null, t.amount, t.name);
+        this.note('tax', { player: p.id, amount: t.amount, prop: i });
+        return;
+      case 'gotojail': return this.sendToJail(p, 'tile');
       case 'chance': case 'chest': return this.drawCard(p, t.type);
       default: return;
     }
@@ -233,7 +264,7 @@ export class Game {
         return this.land(p);
       }
       case 'jail':
-        return this.sendToJail(p);
+        return this.sendToJail(p, 'card');
       case 'repairs': {
         let cost = 0;
         for (const i of this.ownedBy(p.id)) {
@@ -260,6 +291,7 @@ export class Game {
     p.money -= t.price;
     this.props[p.pos].owner = p.id;
     this.addLog(`${p.name} bought ${t.name} for ${money(t.price)}.`);
+    this.note('buy', { player: p.id, prop: p.pos, amount: t.price });
     this.proceed();
   }
 
@@ -271,6 +303,7 @@ export class Game {
     if (p.money < JAIL_FINE) fail('Not enough money.');
     this.pay(p, null, JAIL_FINE, 'jail fine');
     p.inJail = false; p.jailTurns = 0;
+    this.note('jailOut', { player: p.id, how: 'fine', amount: JAIL_FINE });
   }
 
   useJailCard(id) {
@@ -282,11 +315,7 @@ export class Game {
     this.decks[deck].push(deck === 'chance' ? CHANCE.findIndex((c) => c.a.type === 'jailfree') : CHEST.findIndex((c) => c.a.type === 'jailfree'));
     p.inJail = false; p.jailTurns = 0;
     this.addLog(`${p.name} used a Get Out of Jail Free card.`);
-  }
-
-  endTurn(id) {
-    this.requireTurn(id, 'end');
-    this.nextTurn();
+    this.note('jailOut', { player: p.id, how: 'card' });
   }
 
   // ---------- auction ----------
@@ -300,6 +329,7 @@ export class Game {
     };
     this.phase = 'auction';
     this.addLog(`${TILES[i].name} is up for auction!`);
+    this.note('auction', { player: this.cur().id, prop: i });
     this.armAuctionTimer();
   }
 
@@ -354,8 +384,10 @@ export class Game {
       winner.money -= a.bid;
       this.props[a.prop].owner = winner.id;
       this.addLog(`${winner.name} won ${t.name} for ${money(a.bid)}.`);
+      this.note('auctionWon', { player: winner.id, prop: a.prop, amount: a.bid });
     } else {
       this.addLog(`Nobody bought ${t.name}.`);
+      this.note('auctionNone', { prop: a.prop });
     }
     this.phase = 'auction-done';
     this.proceed();
@@ -390,6 +422,7 @@ export class Game {
     p.money -= t.house;
     pr.houses++;
     this.addLog(`${p.name} built a ${pr.houses === 5 ? 'hotel' : 'house'} on ${t.name}.`);
+    this.note('build', { player: p.id, prop: i, hotel: pr.houses === 5, amount: t.house });
   }
 
   sell(id, idx) {
@@ -401,6 +434,7 @@ export class Game {
     pr.houses--;
     p.money += t.house / 2;
     this.addLog(`${p.name} sold a building on ${t.name} for ${money(t.house / 2)}.`);
+    this.note('sell', { player: p.id, prop: i, amount: t.house / 2 });
     this.afterRaise();
   }
 
@@ -412,6 +446,7 @@ export class Game {
     pr.mortgaged = true;
     p.money += mortgageValue(i);
     this.addLog(`${p.name} mortgaged ${t.name} for ${money(mortgageValue(i))}.`);
+    this.note('mortgage', { player: p.id, prop: i, amount: mortgageValue(i) });
     this.afterRaise();
   }
 
@@ -424,6 +459,7 @@ export class Game {
     p.money -= cost;
     pr.mortgaged = false;
     this.addLog(`${p.name} unmortgaged ${t.name} for ${money(cost)}.`);
+    this.note('unmortgage', { player: p.id, prop: i, amount: cost });
   }
 
   afterRaise() {
@@ -450,12 +486,14 @@ export class Game {
       for (const i of this.ownedBy(id)) this.props[i].owner = cred.id;
       cred.jailCards.push(...p.jailCards);
       this.addLog(`${p.name} ${reason}! Everything goes to ${cred.name}.`);
+      this.note('bankrupt', { player: p.id, to: cred.id, reason });
     } else {
       for (const i of this.ownedBy(id)) Object.assign(this.props[i], { owner: null, houses: 0, mortgaged: false });
       for (const deck of p.jailCards) {
         this.decks[deck].push((deck === 'chance' ? CHANCE : CHEST).findIndex((c) => c.a.type === 'jailfree'));
       }
       this.addLog(`${p.name} ${reason}! Their properties return to the bank.`);
+      this.note('bankrupt', { player: p.id, to: null, reason });
     }
     p.jailCards = [];
     p.money = 0;
@@ -470,6 +508,7 @@ export class Game {
       clearTimeout(this.auctionTimer);
       this.auction = null;
       this.addLog(`🏆 ${left[0].name} wins the game!`);
+      this.note('win', { player: left[0].id });
       return;
     }
     if (this.auction) {
@@ -506,6 +545,7 @@ export class Game {
     this.trades = this.trades.filter((t) => t.from !== id);
     this.trades.push(tr);
     this.addLog(`${p.name} proposed a trade to ${to.name}.`);
+    this.note('tradeOffer', { player: p.id, to: to.id });
   }
 
   validateTrade(tr) {
@@ -536,6 +576,7 @@ export class Game {
     if (!accept) {
       this.trades = this.trades.filter((t) => t !== tr);
       this.addLog(`${this.player(id).name} rejected ${this.player(tr.from).name}'s trade.`);
+      this.note('tradeRejected', { player: id, to: tr.from });
       return;
     }
     if (this.phase === 'auction') fail('Wait for the auction to finish.');
@@ -550,6 +591,7 @@ export class Game {
     const moved = new Set([...tr.giveProps, ...tr.getProps]);
     this.trades = this.trades.filter((t) => ![...t.giveProps, ...t.getProps].some((i) => moved.has(i)));
     this.addLog(`${to.name} accepted ${from.name}'s trade.`);
+    this.note('tradeDone', { player: to.id, to: from.id });
     this.afterRaise();
   }
 
@@ -565,7 +607,6 @@ export class Game {
       case 'auction': return this.startAuction(id);
       case 'bid': return this.bid(id, action.amount);
       case 'pass': return this.passAuction(id);
-      case 'endTurn': return this.endTurn(id);
       case 'payJail': return this.payJail(id);
       case 'jailCard': return this.useJailCard(id);
       case 'build': return this.build(id, action.prop);

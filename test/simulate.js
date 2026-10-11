@@ -4,7 +4,7 @@ import { Game, GameError } from '../server/game.js';
 import { OWNABLE, TILES, GROUPS } from '../shared/board.js';
 
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
-const PHASES = new Set(['roll', 'buy', 'auction', 'debt', 'end', 'over']);
+const PHASES = new Set(['roll', 'buy', 'auction', 'debt', 'over']);
 
 function botMove(g) {
   const cur = g.cur();
@@ -21,7 +21,6 @@ function botMove(g) {
     if (cur.inJail) options.push({ who: cur.id, a: { type: 'payJail' } }, { who: cur.id, a: { type: 'jailCard' } });
   }
   if (g.phase === 'buy') options.push({ who: cur.id, a: { type: pick(['buy', 'buy', 'auction']) } });
-  if (g.phase === 'end') options.push({ who: cur.id, a: { type: 'endTurn' } });
   if (g.phase === 'debt') {
     const d = pick(alive.filter((p) => p.money < 0));
     const mine = g.ownedBy(d.id);

@@ -1,4 +1,4 @@
-import { Board3D } from './board3d.js';
+import { Board2D } from './board2d.js';
 import {
   TILES, GROUPS, GROUP_COLORS, RAILROADS, UTILITIES, TOKEN_EMOJI, MAX_PLAYERS, JAIL_FINE,
   mortgageValue, unmortgageCost,
@@ -11,6 +11,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fmt = (n) => (n < 0 ? `-$${-n}` : `$${n}`);
 const SESSION_KEY = 'mono3d.session';
 const NAME_KEY = 'mono3d.name';
+const VIEW_KEY = 'mono3d.view';
 
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -23,6 +24,9 @@ let session = store.get(SESSION_KEY); // {code, token, playerId}
 let room = null;
 let clockOffset = 0;
 let board = null;
+let boardMode = store.get(VIEW_KEY) === '3d' ? '3d' : '2d';
+let boardLoading = null;
+let movingId = null; // player whose move is being animated
 let lastEventId = null;
 const queue = [];
 let animating = false;
@@ -150,7 +154,7 @@ socket.on('chat', (m) => {
   }
 });
 
-socket.on('state', (r) => {
+socket.on('state', async (r) => {
   room = r;
   clockOffset = (r.now ?? Date.now()) - Date.now();
   if (!r.game) {
@@ -160,13 +164,70 @@ socket.on('state', (r) => {
   }
   show('game');
   if (!board) {
-    board = new Board3D($('#stage'), { onTileTap: (i) => openSheet('tile', i) });
-    board.setDiceFaces(r.game.dice);
+    boardLoading ??= mountBoard(boardMode);
+    await boardLoading;
+    if (room !== r) return; // a newer state arrived while the board loaded
   }
   queueEvents(r.game);
   board.sync(r.game, { tokens: !animating });
   renderGame();
 });
+
+// ---------- board (2D by default, 3D on demand) ----------
+let hudReserve = 0;
+addEventListener('resize', () => { hudReserve = 0; });
+
+/** Candidate insets for the 2D board so it doesn't sit under the top bar, toolbar or HUD. */
+function boardLayouts() {
+  const top = $('#topbar').offsetHeight;
+  const tools = $('#toolbar').getBoundingClientRect();
+  const hud = $('#hud');
+  if (innerWidth >= 900) return [{ top, bottom: 12, left: 12, right: hud.offsetWidth + 24 }];
+  hudReserve = Math.max(hudReserve, hud.offsetHeight);
+  return [
+    { top, bottom: hudReserve, left: 6, right: innerWidth - tools.left + 6 }, // toolbar beside the board
+    { top: tools.bottom + 6, bottom: hudReserve, left: 6, right: 6 }, // toolbar above the board
+  ];
+}
+
+async function mountBoard(mode) {
+  let Board = Board2D;
+  if (mode === '3d') {
+    try {
+      Board = (await import('./board3d.js')).Board3D;
+    } catch (err) {
+      console.error(err);
+      toast('3D view could not load on this device.', 'err');
+      mode = '2d';
+    }
+  }
+  board?.dispose();
+  board = new Board($('#stage'), { onTileTap: (i) => openSheet('tile', i), layouts: boardLayouts });
+  boardMode = mode;
+  $('#modeBtn').textContent = mode === '3d' ? '2D' : '3D';
+  $('#modeBtn').title = mode === '3d' ? 'Switch to 2D board' : 'Switch to 3D board';
+  $('#viewBtn').classList.toggle('hidden', mode !== '3d');
+  $('#notice').classList.add('hidden');
+  if (room?.game) {
+    board.setDiceFaces(room.game.dice);
+    board.sync(room.game);
+  }
+  if (lastNotice) board.showNotice?.(lastNotice);
+}
+
+let switching = false;
+async function toggleBoardMode() {
+  if (!board || switching) return;
+  switching = true;
+  const next = boardMode === '3d' ? '2d' : '3d';
+  store.set(VIEW_KEY, next);
+  try {
+    boardLoading = mountBoard(next);
+    await boardLoading;
+  } finally {
+    switching = false;
+  }
+}
 
 // ---------- lobby ----------
 function renderLobby() {
@@ -201,22 +262,117 @@ async function runQueue() {
   renderGame();
   while (queue.length) {
     const e = queue.shift();
+    movingId = e.player;
     try {
       if (e.type === 'dice') {
         await board.rollDice(e.dice);
         await sleep(150);
       } else if (e.type === 'move') {
         await board.animateMove(e.player, e.from, e.to, e.kind);
-      } else if (e.type === 'card') {
-        const who = playerById(e.player);
-        toast(`<div class="card-pop ${e.deck}"><small>${e.deck === 'chance' ? 'CHANCE' : 'COMMUNITY CHEST'} · ${esc(who?.name)}</small>${esc(e.text)}</div>`, '', 4500);
-        await sleep(1300);
+      } else if (e.type === 'card' || e.type === 'note') {
+        const n = describe(e);
+        if (n) {
+          showNotice(n);
+          if (n.buzz) navigator.vibrate?.(80);
+          await sleep(n.ms ?? 900);
+        }
       }
     } catch (err) { console.error(err); }
   }
   animating = false;
+  movingId = null;
   board.sync(room.game);
   renderGame();
+}
+
+// ---------- event notices ("You paid $70 rent to Sam") ----------
+const isMe = (id) => id === session?.playerId;
+/** "You" / "you" for the viewer, otherwise the player's name in their color. */
+function who(id, start = true) {
+  if (id == null) return 'the bank';
+  if (isMe(id)) return start ? 'You' : 'you';
+  const p = playerById(id);
+  return `<b style="color:${esc(p?.color)}">${esc(p?.name ?? 'Someone')}</b>`;
+}
+const whose = (id) => (isMe(id) ? 'your' : `${who(id)}'s`);
+const tileName = (i) => `<b>${esc(TILES[i]?.name)}</b>`;
+const cash = (n) => `<span class="money">${fmt(n)}</span>`;
+const loss = (n) => `<span class="loss">${fmt(n)}</span>`;
+
+/** Text and illustration for a game event; null for events with nothing to say. */
+function describe(e) {
+  const p = who(e.player);
+  if (e.type === 'card') {
+    const chance = e.deck === 'chance';
+    return { icon: chance ? '❓' : '🎁', ms: 1800,
+      html: `<span class="card">${chance ? 'CHANCE' : 'COMMUNITY CHEST'} · ${esc(playerById(e.player)?.name)}</span>${esc(e.text)}` };
+  }
+  const t = TILES[e.prop];
+  const propIcon = t?.type === 'railroad' ? '🚂' : t?.type === 'utility' ? '💡' : '🏠';
+  switch (e.kind) {
+    case 'rent': return { icon: '💸', ms: 1400, buzz: isMe(e.player) || isMe(e.to),
+      html: `${p} paid ${loss(e.amount)} rent to ${who(e.to, false)}` };
+    case 'noRent': return { icon: '😌', html: `${tileName(e.prop)} is mortgaged — ${who(e.player, false)} paid no rent` };
+    case 'tax': return { icon: '🧾', ms: 1200, html: `${p} paid ${loss(e.amount)} ${esc(t.name)}` };
+    case 'go': return { icon: '💰', html: `${p} passed GO and collected ${cash(e.amount)}` };
+    case 'jail': return { icon: '🚔', ms: 1500, buzz: isMe(e.player), html: {
+      tile: `${p} went to Jail!`,
+      card: `${p} got sent to Jail!`,
+      doubles: `Three doubles in a row — ${who(e.player, false)} went straight to Jail!`,
+    }[e.why] };
+    case 'jailStay': return { icon: '🔒', html: `${p} stayed in Jail (${e.tries}/3)` };
+    case 'jailOut': return { icon: '🔓', ms: 1100, html: {
+      doubles: `${p} rolled doubles and got out of Jail!`,
+      fine: `${p} paid ${loss(e.amount)} to get out of Jail`,
+      forced: `${p} paid ${loss(e.amount)} after 3 tries and left Jail`,
+      card: `${p} used a Get Out of Jail Free card`,
+    }[e.how] };
+    case 'doubles': return { icon: '🎲', ms: 700, html: `${p} rolled doubles — another roll!` };
+    case 'buy': return { icon: propIcon, ms: 1100, html: `${p} bought ${tileName(e.prop)} for ${loss(e.amount)}` };
+    case 'auction': return { icon: '🔨', html: `${tileName(e.prop)} is up for auction!` };
+    case 'auctionWon': return { icon: '🔨', ms: 1300, html: `${p} won ${tileName(e.prop)} at auction for ${loss(e.amount)}` };
+    case 'auctionNone': return { icon: '🤷', html: `Nobody bid on ${tileName(e.prop)}` };
+    case 'build': return { icon: e.hotel ? '🏨' : '🏠', ms: 700, html: `${p} built a ${e.hotel ? 'hotel' : 'house'} on ${tileName(e.prop)}` };
+    case 'sell': return { icon: '🏚️', ms: 700, html: `${p} sold a building on ${tileName(e.prop)} for ${cash(e.amount)}` };
+    case 'mortgage': return { icon: '🏦', ms: 700, html: `${p} mortgaged ${tileName(e.prop)} for ${cash(e.amount)}` };
+    case 'unmortgage': return { icon: '🏦', ms: 700, html: `${p} paid off the mortgage on ${tileName(e.prop)}` };
+    case 'debt': return { icon: '⚠️', ms: 1300, buzz: isMe(e.player),
+      html: `${p} ${isMe(e.player) ? 'owe' : 'owes'} ${loss(e.amount)} — raise funds or go bankrupt` };
+    case 'bankrupt': return { icon: '💥', ms: 1800,
+      html: `${p} went bankrupt${e.to ? ` — everything goes to ${who(e.to, false)}` : ''}` };
+    case 'win': return { icon: '🏆', ms: 1500, html: `${p} won the game!` };
+    case 'tradeOffer': return { icon: '🤝', ms: 700, html: `${p} sent ${isMe(e.to) ? 'you' : who(e.to, false)} a trade offer` };
+    case 'tradeDone': return { icon: '🤝', ms: 1100, html: `${p} accepted ${whose(e.to)} trade` };
+    case 'tradeRejected': return { icon: '🙅', ms: 700, html: `${p} turned down ${whose(e.to)} trade` };
+    default: return null;
+  }
+}
+
+let noticeTimer = null;
+let lastNotice = null;
+function showNotice(n) {
+  lastNotice = n;
+  if (board?.showNotice) {
+    board.showNotice(n);
+    return;
+  }
+  const el = $('#notice');
+  el.innerHTML = `<span class="ico">${n.icon}</span><span>${n.html}</span>`;
+  el.classList.remove('hidden', 'fade');
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => el.classList.add('fade'), 3500);
+}
+
+/** Cash plus what the player's property is worth. */
+function netWorth(g, p) {
+  let total = p.money;
+  for (const [i, pr] of Object.entries(g.props)) {
+    if (pr.owner !== p.id) continue;
+    const t = TILES[i];
+    total += pr.mortgaged ? t.price - unmortgageCost(Number(i)) : t.price;
+    total += pr.houses * (t.house ?? 0);
+  }
+  return total;
 }
 
 // ---------- game HUD ----------
@@ -239,6 +395,7 @@ function renderChips(g) {
       <span>${esc(p.name)}${p.inJail ? ' 🔒' : ''}</span>
       ${p.id === session?.playerId ? '<span class="me">YOU</span>' : ''}
       <span class="money ${p.money < 0 ? 'neg' : ''}">${fmt(p.money)}</span>
+      ${p.bankrupt ? '' : `<span class="net">(${fmt(netWorth(g, p))})</span>`}
     </div>`;
   }).join('');
 }
@@ -254,7 +411,7 @@ function renderStatus(g) {
   const btn = (label, a, cls = '', extra = '') => buttons.push(`<button class="${cls}" data-a="${a}" ${extra}>${label}</button>`);
 
   if (animating) {
-    status = `${esc(cur.name)} is moving…`;
+    status = `${esc(playerById(movingId)?.name ?? cur.name)} is moving…`;
   } else if (g.phase === 'over') {
     status = `🏆 <b>${esc(playerById(g.winner)?.name)}</b> wins the game!`;
     btn('Back to home', 'leave', 'primary');
@@ -286,16 +443,12 @@ function renderStatus(g) {
       status = `${dice} — <b>${esc(tile.name)}</b> is for sale.`;
       btn(`Buy ${fmt(tile.price)}`, 'act', 'primary', `data-t="buy" ${cur.money < tile.price ? 'disabled' : ''}`);
       btn('Auction', 'act', '', 'data-t="auction"');
-    } else if (g.phase === 'end') {
-      status = `${dice} — on <b>${esc(tile.name)}</b>.`;
-      btn('End turn ➜', 'act', 'primary', 'data-t="endTurn"');
     }
   } else {
     const name = `<b>${esc(cur.name)}</b>`;
     status = {
       roll: `${name}'s turn — rolling…`,
       buy: `${name} is deciding whether to buy ${esc(tile.name)}…`,
-      end: `${dice} — ${name} is on ${esc(tile.name)}.`,
     }[g.phase] ?? `${name}'s turn`;
   }
   $('#status').innerHTML = status;
@@ -303,7 +456,7 @@ function renderStatus(g) {
   $('#actions').querySelectorAll('button').forEach((b) => { if (animating && b.dataset.a !== 'leave') b.disabled = true; });
 
   const turnKey = `${g.turn}`;
-  if (seen.turnKey !== turnKey) {
+  if (!animating && seen.turnKey !== turnKey) {
     if (seen.turnKey != null && mine && g.phase === 'roll') {
       navigator.vibrate?.(150);
       toast('🎲 <b>Your turn!</b>');
@@ -563,7 +716,8 @@ const SHEETS = {
       <li>Own a full color set to double the rent and build houses (evenly), then hotels.</li>
       <li>Mortgage properties for quick cash. Trade with anyone at any time.</li>
       <li>If you can't pay, raise money or go bankrupt. Last player standing wins!</li>
-      <li>Drag to rotate the board, pinch to zoom, tap any space to see its card.</li>
+      <li>Your turn ends automatically after you move (unless you rolled doubles).</li>
+      <li>Tap any space to see its card. Use the <b>3D</b> button to switch to the 3D board (drag to rotate, pinch to zoom).</li>
     </ul>`,
 
   over: () => {
@@ -689,3 +843,4 @@ $('#tradeBtn').onclick = () => openSheet('trade');
 $('#logBtn').onclick = () => openSheet('log');
 $('#menuBtn').onclick = () => openSheet('menu');
 $('#viewBtn').onclick = () => board?.resetView();
+$('#modeBtn').onclick = toggleBoardMode;

@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#14202b" />
+  <meta name="theme-color" content="#45464c" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>Monopoly 3D</title>
+  <title>Monopoly</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎲</text></svg>" />
   <link rel="stylesheet" href="/style.css" />
   <script type="importmap">
@@ -22,7 +22,7 @@
   <!-- Home: create or join a room -->
   <section id="home" class="screen">
     <div class="panel">
-      <h1><span class="logo">MONOPOLY</span><small>3D · up to 6 players</small></h1>
+      <h1><span class="logo">MONOPOLY</span><small>2D &amp; 3D · up to 6 players</small></h1>
       <label>Your name
         <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Alex" />
       </label>
@@ -56,8 +56,10 @@
     <header id="topbar">
       <div id="chips"></div>
     </header>
+    <div id="notice" class="hidden"></div>
     <div id="toolbar">
-      <button id="viewBtn" title="Reset view">🎯</button>
+      <button id="modeBtn" title="Switch to 3D board">3D</button>
+      <button id="viewBtn" title="Reset view" class="hidden">🎯</button>
       <button id="logBtn" title="Log & chat">💬<span id="chatDot" class="dot hidden"></span></button>
       <button id="menuBtn" title="Menu">☰</button>
     </div>
