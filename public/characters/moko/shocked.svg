@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 600" width="640" height="600" role="img" aria-label="Moko, a tiny lilac sage with droopy fluffy ears, huge sparkly eyes, a knitted poncho and a glowing star stone, floating on a cloud">
+  
+
+  <g fill="#1A0F14">
+    <circle cx="238" cy="506" r="46"></circle><circle cx="290" cy="490" r="56"></circle><circle cx="352" cy="490" r="58"></circle><circle cx="408" cy="506" r="46"></circle>
+    <rect x="232" y="500" width="182" height="52" rx="26"></rect>
+  </g>
+  <g fill="#F4F6FF">
+    <circle cx="238" cy="506" r="39"></circle><circle cx="290" cy="490" r="49"></circle><circle cx="352" cy="490" r="51"></circle><circle cx="408" cy="506" r="39"></circle>
+    <rect x="239" y="500" width="168" height="45" rx="22"></rect>
+  </g>
+  <path d="M250,534 Q320,548 398,534" fill="none" stroke="#C9CCEA" stroke-width="8" stroke-linecap="round"></path>
+  <path d="M262,474 Q280,458 300,456" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M228,474 Q236,366 320,354 Q404,366 412,474 Q320,498 228,474 Z" fill="#F3E3C3"></path>
+  </g>
+  <path d="M242,420 L258,410 L274,420 L290,410 L306,420 L322,410 L338,420 L354,410 L370,420 L386,410 L400,420" fill="none" stroke="#E8B04A" stroke-width="5" stroke-linejoin="round"></path>
+  <path d="M236,452 L252,442 L268,452 L284,442 L300,452 L316,442 L332,452 L348,442 L364,452 L380,442 L396,452 L408,446" fill="none" stroke="#5EC8FF" stroke-width="5" stroke-linejoin="round"></path>
+  <rect x="368" y="458" width="26" height="22" rx="4" fill="#E8B04A" stroke="#1A0F14" stroke-width="4" transform="rotate(-8 381 469)"></rect>
+  <path d="M374,464 L388,474 M388,462 L376,476" stroke="#1A0F14" stroke-width="2"></path>
+  <path d="M248,402 Q262,378 292,372" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.6"></path>
+
+  <g stroke="#1A0F14" stroke-width="6" stroke-linejoin="round">
+    <path d="M248,366 Q320,394 392,366 L394,390 Q320,420 246,390 Z" fill="#FF8A3D"></path>
+    <path d="M362,386 L394,452 L370,460 L346,394 Z" fill="#FF8A3D"></path>
+  </g>
+  <path d="M368,452 L362,466 M378,450 L376,464 M386,448 L390,460" stroke="#1A0F14" stroke-width="4" stroke-linecap="round"></path>
+  <path d="M258,378 Q320,400 384,376" fill="none" stroke="#D9622A" stroke-width="4" stroke-dasharray="6 6"></path>
+
+  <circle cx="320" cy="440" r="56" fill="#FFE36E" opacity="0.35"></circle>
+  <circle cx="320" cy="440" r="40" fill="#FFE36E" opacity="0.35"></circle>
+  <path d="M320,408 L330,430 L354,432 L336,447 L342,470 L320,458 L298,470 L304,447 L286,432 L310,430 Z" fill="#FFE36E" stroke="#1A0F14" stroke-width="6" stroke-linejoin="round"></path>
+  <path d="M314,428 L320,416 L324,428" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"></path>
+  <g stroke="#1A0F14" stroke-width="6">
+    <ellipse cx="286" cy="452" rx="20" ry="16" fill="#B7A6F5"></ellipse>
+    <ellipse cx="354" cy="452" rx="20" ry="16" fill="#B7A6F5"></ellipse>
+  </g>
+  <path d="M278,446 L282,458 M290,446 L292,458 M346,446 L348,458 M358,446 L362,458" stroke="#1A0F14" stroke-width="3" stroke-linecap="round" opacity="0.6"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M226,232 Q150,214 96,280 Q78,332 112,346 Q150,332 180,298 Q206,272 232,264 Z" fill="#B7A6F5"></path>
+    <path d="M414,226 Q490,208 544,274 Q562,326 528,340 Q490,326 460,292 Q434,266 408,258 Z" fill="#B7A6F5"></path>
+  </g>
+  <path d="M214,240 Q156,236 118,284 Q110,316 124,324 Q156,306 184,282 Q204,266 218,258 Z" fill="#F7A8C8"></path>
+  <path d="M424,236 Q482,230 522,278 Q530,310 516,318 Q484,300 456,276 Q436,260 422,252 Z" fill="#F7A8C8"></path>
+  <g fill="#ffffff" stroke="#1A0F14" stroke-width="5">
+    <circle cx="104" cy="336" r="14"></circle><circle cx="120" cy="350" r="12"></circle><circle cx="92" cy="350" r="10"></circle>
+    <circle cx="534" cy="330" r="14"></circle><circle cx="518" cy="344" r="12"></circle><circle cx="546" cy="344" r="10"></circle>
+  </g>
+
+  <ellipse cx="320" cy="232" rx="122" ry="112" fill="#B7A6F5" stroke="#1A0F14" stroke-width="7"></ellipse>
+  <path d="M220,282 Q262,338 330,342 Q400,338 432,270 Q404,322 330,328 Q262,326 220,282 Z" fill="rgb(137,125,184)"></path>
+  <path d="M236,170 Q270,134 322,128 L318,140 Q274,148 246,180 Z" fill="#fff" opacity="0.45"></path>
+  <path d="M296,128 Q282,92 304,76 Q308,102 320,118 Q326,82 352,76 Q338,104 340,124 Q356,100 376,104 Q356,118 348,132 Z" fill="#ffffff" stroke="#1A0F14" stroke-width="5" stroke-linejoin="round"></path>
+  <path d="M288,168 Q320,158 352,168 M296,180 Q320,172 344,180" fill="none" stroke="rgb(137,125,184)" stroke-width="4" stroke-linecap="round"></path>
+  <ellipse cx="248" cy="286" rx="18" ry="10" fill="#FF8CB4" opacity="0.5"></ellipse>
+  <ellipse cx="396" cy="282" rx="18" ry="10" fill="#FF8CB4" opacity="0.5"></ellipse>
+  <circle cx="314" cy="270" r="3.5" fill="#1A0F14"></circle><circle cx="330" cy="270" r="3.5" fill="#1A0F14"></circle>
+
+  
+
+  
+
+  
+    <g stroke="#1A0F14" stroke-width="5">
+      <ellipse cx="270" cy="232" rx="40" ry="46" fill="#ffffff"></ellipse>
+      <ellipse cx="372" cy="228" rx="40" ry="46" fill="#ffffff"></ellipse>
+    </g>
+    <circle cx="270" cy="234" r="12" fill="#2A1E3A"></circle><circle cx="372" cy="230" r="12" fill="#2A1E3A"></circle>
+    <path d="M236,174 Q268,160 298,176 M344,172 Q376,158 406,170" fill="none" stroke="rgb(137,125,184)" stroke-width="7" stroke-linecap="round"></path>
+    <ellipse cx="322" cy="300" rx="12" ry="14" fill="#3A0B0B" stroke="#1A0F14" stroke-width="5"></ellipse>
+  
+
+  
+
+  
+</svg>

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 600" width="640" height="600" role="img" aria-label="Scorch, a chibi charcoal wyvern dragon with crimson wings, ivory horns, gold eyes and amber belly plates">
+  
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M384,302 L522,118 L606,166 Q572,194 596,252 Q556,252 544,304 Q480,292 384,334 Z" fill="rgb(136,33,39)"></path>
+  </g>
+  <path d="M522,118 L590,182 M522,118 L560,246 M522,118 L510,300" stroke="rgb(38,35,42)" stroke-width="7" stroke-linecap="round" fill="none"></path>
+  <path d="M384,302 L522,118" stroke="rgb(38,35,42)" stroke-width="14" stroke-linecap="round"></path>
+  <path d="M522,118 L534,92 L540,120 Z" fill="#EDE3C8" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M330,312 L430,58 L524,36 Q500,84 540,114 Q496,128 500,178 Q456,170 440,214 Q390,236 344,346 Z" fill="#C8303A"></path>
+  </g>
+  <path d="M430,58 L512,48 M430,58 L524,112 M430,58 L494,176 M430,58 L440,210" stroke="#3A3640" stroke-width="6" stroke-linecap="round" fill="none"></path>
+  <path d="M330,312 L430,58" stroke="#3A3640" stroke-width="16" stroke-linecap="round"></path>
+  <path d="M330,312 L430,58" stroke="#1A0F14" stroke-width="3" stroke-linecap="round" opacity="0.4"></path>
+  <path d="M430,58 L436,28 L448,58 Z" fill="#EDE3C8" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round"></path>
+  <path d="M452,92 Q488,80 506,64" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.35" fill="none"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M392,438 Q500,522 584,424 L612,404 L604,440 Q514,566 372,488 Z" fill="#3A3640"></path>
+    <path d="M584,424 L626,392 L616,446 L596,436 Z" fill="#C8303A"></path>
+    <ellipse cx="398" cy="478" rx="38" ry="40" fill="rgb(38,35,42)"></ellipse>
+    <path d="M380,512 L370,538 L392,530 L398,546 L414,528 L424,540 L428,512 Z" fill="rgb(38,35,42)" stroke-width="5"></path>
+  </g>
+  <path d="M470,486 L478,468 L488,484 M512,486 L522,466 L530,480 M548,466 L560,446 L566,462" fill="#EDE3C8" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M246,332 Q266,280 340,280 Q424,290 434,384 Q442,484 340,502 Q248,502 234,432 Z" fill="#3A3640"></path>
+    <path d="M262,348 Q300,326 332,338 L340,484 Q290,494 266,462 Z" fill="#F0A33A" stroke-width="6"></path>
+  </g>
+  <path d="M266,374 Q300,362 334,370 M268,402 Q302,392 336,400 M270,430 Q304,422 338,430 M274,458 Q306,452 338,458" fill="none" stroke="#B3611C" stroke-width="4"></path>
+  <path d="M272,354 Q298,342 320,344" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.45" fill="none"></path>
+  <path d="M352,290 L362,268 L374,292 M388,302 L402,282 L410,308 M414,326 L432,310 L432,338" fill="#C8303A" stroke="#1A0F14" stroke-width="5" stroke-linejoin="round"></path>
+  <path d="M360,300 Q390,300 410,330" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.2" fill="none"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <ellipse cx="292" cy="486" rx="46" ry="42" fill="#3A3640"></ellipse>
+    <path d="M254,514 L240,548 Q300,560 330,542 L322,510 Z" fill="#3A3640" stroke-width="6"></path>
+  </g>
+  <g fill="#EDE3C8" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round">
+    <path d="M240,546 L226,560 L252,556 Z"></path><path d="M270,552 L262,568 L286,560 Z"></path><path d="M302,550 L300,566 L320,554 Z"></path>
+  </g>
+  <path d="M268,470 Q286,458 306,462" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.25" fill="none"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M290,134 Q344,70 404,58 Q366,92 326,156 Z" fill="#EDE3C8"></path>
+    <path d="M254,122 Q272,60 326,28 Q302,76 286,132 Z" fill="#EDE3C8"></path>
+    <path d="M332,202 Q328,118 250,108 Q180,106 160,166 Q110,176 90,226 Q84,262 112,276 Q170,298 250,298 Q326,292 332,202 Z" fill="#3A3640"></path>
+  </g>
+  <path d="M300,96 Q340,72 380,66 M270,80 Q290,52 312,38" stroke="#B9AE92" stroke-width="4" fill="none"></path>
+  <path d="M330,196 L360,184 L340,210 L368,214 L336,232 L356,246 L322,252" fill="#C8303A" stroke="#1A0F14" stroke-width="5" stroke-linejoin="round"></path>
+  <path d="M102,262 Q162,288 250,290 Q302,288 324,252 Q300,282 250,284 Q170,284 106,254 Z" fill="#F0A33A"></path>
+  <path d="M176,150 Q214,120 262,118 L258,128 Q218,132 186,160 Z" fill="#fff" opacity="0.25"></path>
+  <path d="M120,190 Q138,176 160,172" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.25" fill="none"></path>
+  <ellipse cx="108" cy="232" rx="7" ry="5" fill="#1A0F14"></ellipse>
+  <ellipse cx="128" cy="224" rx="6" ry="4.5" fill="#1A0F14"></ellipse>
+  <circle cx="232" cy="268" r="4" fill="rgb(38,35,42)"></circle><circle cx="262" cy="262" r="4" fill="rgb(38,35,42)"></circle><circle cx="290" cy="250" r="4" fill="rgb(38,35,42)"></circle>
+
+  
+
+  
+
+  
+
+  
+
+  
+    <g stroke="#1A0F14" stroke-width="5">
+      <ellipse cx="208" cy="204" rx="22" ry="22" fill="#FFD43B"></ellipse>
+      <ellipse cx="276" cy="194" rx="24" ry="24" fill="#FFD43B"></ellipse>
+    </g>
+    <ellipse cx="206" cy="212" rx="4" ry="12" fill="#1A0F14"></ellipse><ellipse cx="274" cy="202" rx="4.5" ry="13" fill="#1A0F14"></ellipse>
+    <path d="M180,196 L240,176 L242,190 L182,208 Z" fill="rgb(38,35,42)" stroke="#1A0F14" stroke-width="5" stroke-linejoin="round"></path>
+    <path d="M250,178 L310,180 L310,194 L252,192 Z" fill="rgb(38,35,42)" stroke="#1A0F14" stroke-width="5" stroke-linejoin="round"></path>
+    <ellipse cx="186" cy="234" rx="6" ry="10" fill="#7FC4FF" stroke="#1A0F14" stroke-width="3"></ellipse>
+    <path d="M108,276 Q160,256 216,276" fill="none" stroke="#1A0F14" stroke-width="6" stroke-linecap="round"></path>
+    <path d="M110,226 Q100,214 106,202" fill="none" stroke="#8A8494" stroke-width="5" stroke-linecap="round" opacity="0.7"></path>
+  
+</svg>

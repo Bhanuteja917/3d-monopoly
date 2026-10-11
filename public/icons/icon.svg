@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="#4f86ff"/><stop offset="0.6" stop-color="#2a3cff"/><stop offset="1" stop-color="#1a1f9c"/></radialGradient>
+    <radialGradient id="sea" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#7fe0ff"/><stop offset="1" stop-color="#1d8fe0"/></radialGradient>
+    <clipPath id="clip"><rect width="512" height="512" rx="112"/></clipPath>
+    <clipPath id="globe"><circle cx="256" cy="232" r="150"/></clipPath>
+  </defs>
+  <g clip-path="url(#clip)">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <rect x="-512" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="-416" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="-320" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="-224" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="-128" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="-32" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="64" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="160" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="256" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="352" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="448" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="544" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="640" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="736" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="832" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="928" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="1024" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="1120" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="1216" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/><rect x="1312" y="-200" width="44" height="1400" fill="#ffffff" opacity="0.06" transform="rotate(35 256 256)"/>
+    <g transform="translate(256 256) scale(0.92) translate(-256 -256)">
+      <ellipse cx="256" cy="396" rx="150" ry="26" fill="#0d1060" opacity="0.45"/>
+      <circle cx="256" cy="232" r="164" fill="#1d1530"/>
+      <circle cx="256" cy="232" r="150" fill="url(#sea)"/>
+      <g clip-path="url(#globe)" fill="#5fdc5a" stroke="#1d1530" stroke-width="8" stroke-linejoin="round">
+        <path d="M150 120 C190 95 250 110 262 140 C272 168 236 172 228 196 C222 218 250 236 236 262 C222 286 186 280 172 252 C160 228 132 222 124 196 C116 170 126 136 150 120 Z"/>
+        <path d="M300 112 C340 100 392 126 404 168 C412 196 390 206 372 202 C352 198 340 214 346 236 C352 262 330 280 306 268 C284 256 292 226 278 206 C266 188 270 128 300 112 Z"/>
+        <path d="M262 300 C292 288 330 300 338 330 C344 356 312 384 282 380 C252 376 236 346 244 322 C248 310 252 304 262 300 Z"/>
+      </g>
+      <circle cx="256" cy="232" r="150" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="6" stroke-dasharray="2 18"/>
+      <path d="M170 150 A 110 110 0 0 1 250 108" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" opacity="0.7"/>
+      <g font-family="Arial Rounded MT Bold, Arial Black, sans-serif" font-weight="900" font-size="132" text-anchor="middle">
+        <text x="256" y="440" fill="#1d1530" stroke="#1d1530" stroke-width="34" stroke-linejoin="round">GB</text>
+        <text x="256" y="432" fill="#ffd23f" stroke="#1d1530" stroke-width="10" stroke-linejoin="round" paint-order="stroke">GB</text>
+      </g>
+    </g>
+  </g>
+</svg>
