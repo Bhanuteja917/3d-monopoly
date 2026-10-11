@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640" role="img" aria-label="Override, a chunky chrome battle robot with a dark visor, glowing eyes, an LED mouth screen, chest reactor and big fists">
+  
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M412,330 L476,322 L488,392 L424,402 Z" fill="rgb(110,116,125)"></path>
+    <path d="M436,398 L474,394 L478,440 L440,444 Z" fill="#4A505C"></path>
+    <rect x="426" y="436" width="78" height="66" rx="16" fill="rgb(110,116,125)"></rect>
+  </g>
+  <path d="M440,456 L490,454 M440,474 L490,472" stroke="#1A0F14" stroke-width="4" opacity="0.5"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M362,478 L410,476 L414,548 L366,550 Z" fill="#4A505C"></path>
+    <path d="M346,546 L438,540 L446,588 L346,594 Z" fill="rgb(110,116,125)"></path>
+    <path d="M250,484 L300,482 L302,552 L254,556 Z" fill="#4A505C"></path>
+    <path d="M206,552 L306,546 L312,598 L204,602 Z" fill="#A9B3C1"></path>
+    <path d="M206,552 L222,532 L318,526 L306,546 Z" fill="rgb(199,206,215)"></path>
+  </g>
+  <path d="M262,496 L290,494 M264,520 L292,518 M372,490 L402,488 M374,514 L404,512" stroke="#8A919E" stroke-width="5" stroke-linecap="round"></path>
+  <path d="M214,584 L304,580" stroke="#1A0F14" stroke-width="4" opacity="0.4"></path>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M244,462 L420,456 L424,496 L248,502 Z" fill="#4A505C"></path>
+    <path d="M230,340 L410,330 L420,470 L240,480 Z" fill="#A9B3C1"></path>
+    <path d="M230,340 L262,310 L432,300 L410,330 Z" fill="rgb(199,206,215)"></path>
+    <path d="M410,330 L432,300 L442,440 L420,470 Z" fill="rgb(110,116,125)"></path>
+  </g>
+  <g>
+    <path d="M244,440 L416,432 L418,460 L246,468 Z" fill="#FFC629" stroke="#1A0F14" stroke-width="5" stroke-linejoin="round"></path>
+    <path d="M262,440 L248,466 M292,438 L278,466 M322,437 L308,465 M352,436 L338,464 M382,434 L368,462 M410,433 L398,460" stroke="#1A0F14" stroke-width="9"></path>
+  </g>
+  <circle cx="324" cy="390" r="70" fill="#FF2E3B" opacity="0.25"></circle>
+  <circle cx="324" cy="390" r="30" fill="#2A2F38" stroke="#1A0F14" stroke-width="6"></circle>
+  <circle cx="324" cy="390" r="18" fill="#FF2E3B" stroke="#1A0F14" stroke-width="4"></circle>
+  <circle cx="318" cy="384" r="6" fill="#fff" opacity="0.8"></circle>
+  <circle cx="246" cy="352" r="5" fill="#1A0F14" opacity="0.5"></circle><circle cx="396" cy="346" r="5" fill="#1A0F14" opacity="0.5"></circle>
+  <circle cx="250" cy="424" r="5" fill="#1A0F14" opacity="0.5"></circle><circle cx="402" cy="418" r="5" fill="#1A0F14" opacity="0.5"></circle>
+  <path d="M270,320 Q330,312 400,312" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.6" fill="none"></path>
+  <path d="M244,350 L246,420" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.4"></path>
+  <path d="M368,356 L380,372 L376,380" stroke="#1A0F14" stroke-width="3" fill="none" opacity="0.5"></path>
+
+  <path d="M290,312 L292,292 M350,308 L350,288" stroke="#4A505C" stroke-width="22"></path>
+  <path d="M290,312 L292,292 M350,308 L350,288" stroke="#1A0F14" stroke-width="3" opacity="0.5"></path>
+
+  <path d="M352,96 L366,40" stroke="#1A0F14" stroke-width="12" stroke-linecap="round"></path>
+  <path d="M352,96 L366,40" stroke="#8A919E" stroke-width="5" stroke-linecap="round"></path>
+  <circle cx="367" cy="36" r="12" fill="#FF2E3B" stroke="#1A0F14" stroke-width="5"></circle>
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M178,142 L380,130 L390,300 L188,312 Z" fill="#A9B3C1"></path>
+    <path d="M178,142 L218,100 L422,92 L380,130 Z" fill="rgb(199,206,215)"></path>
+    <path d="M380,130 L422,92 L430,262 L390,300 Z" fill="rgb(110,116,125)"></path>
+  </g>
+  <path d="M396,150 L420,128 L422,150 L398,172 Z" fill="#FFC629" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round"></path>
+  <path d="M398,190 L422,168 L424,190 L400,212 Z" fill="#FFC629" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round"></path>
+  <circle cx="186" cy="226" r="16" fill="#4A505C" stroke="#1A0F14" stroke-width="6"></circle>
+  <circle cx="186" cy="226" r="5" fill="#1A0F14"></circle>
+  <path d="M232,108 Q300,100 370,98" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.7" fill="none"></path>
+  <path d="M196,156 L198,240" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.45"></path>
+  <path d="M260,124 L266,138 L262,148" stroke="#1A0F14" stroke-width="3" fill="none" opacity="0.5"></path>
+  <circle cx="206" cy="152" r="4" fill="#1A0F14" opacity="0.5"></circle><circle cx="364" cy="144" r="4" fill="#1A0F14" opacity="0.5"></circle>
+  <circle cx="210" cy="292" r="4" fill="#1A0F14" opacity="0.5"></circle><circle cx="372" cy="284" r="4" fill="#1A0F14" opacity="0.5"></circle>
+
+  <path d="M200,176 L370,168 L372,238 L202,246 Z" fill="#1A1D24" stroke="#1A0F14" stroke-width="6" stroke-linejoin="round"></path>
+  <path d="M212,180 L250,178 L214,232 Z" fill="#fff" opacity="0.08"></path>
+  <path d="M222,256 L352,250 L354,290 L224,296 Z" fill="#1A1D24" stroke="#1A0F14" stroke-width="5" stroke-linejoin="round"></path>
+
+  
+
+  
+    <circle cx="250" cy="212" r="38" fill="#FF2E3B" opacity="0.35"></circle>
+    <circle cx="322" cy="208" r="38" fill="#FF2E3B" opacity="0.35"></circle>
+    <path d="M226,204 L276,214 L274,222 L228,216 Z" fill="#FF2E3B"></path>
+    <path d="M298,212 L346,198 L348,208 L300,220 Z" fill="#FF2E3B"></path>
+    <path d="M210,166 L288,196 L284,206 L212,182 Z" fill="rgb(110,116,125)" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round"></path>
+    <path d="M286,196 L364,154 L366,170 L290,206 Z" fill="rgb(110,116,125)" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round"></path>
+    <path d="M234,282 L250,264 L266,282 L282,262 L298,280 L314,260 L330,278 L344,262" fill="none" stroke="#FF2E3B" stroke-width="5" stroke-linejoin="miter"></path>
+  
+
+  
+
+  
+
+  
+
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <path d="M168,330 L244,320 L252,392 L176,404 Z" fill="#A9B3C1"></path>
+    <path d="M168,330 L190,306 L262,298 L244,320 Z" fill="rgb(199,206,215)"></path>
+  </g>
+  <path d="M176,352 L246,342 L248,358 L178,368 Z" fill="#FFC629" stroke="#1A0F14" stroke-width="4" stroke-linejoin="round"></path>
+  <path d="M196,350 L188,366 M216,347 L208,364 M236,344 L228,361" stroke="#1A0F14" stroke-width="6"></path>
+  <path d="M186,402 L226,398 L224,446 L184,450 Z" fill="#4A505C" stroke="#1A0F14" stroke-width="6" stroke-linejoin="round"></path>
+  <path d="M192,414 L218,412 M192,430 L218,428" stroke="#8A919E" stroke-width="4"></path>
+  <g stroke="#1A0F14" stroke-width="7" stroke-linejoin="round">
+    <rect x="148" y="440" width="96" height="78" rx="18" fill="#A9B3C1"></rect>
+    <path d="M148,458 L166,440 L250,438 L244,456" fill="rgb(199,206,215)" stroke-width="5"></path>
+  </g>
+  <path d="M170,462 L170,500 M194,462 L194,502 M218,462 L218,502" stroke="#1A0F14" stroke-width="4" opacity="0.5"></path>
+  <path d="M158,470 Q160,454 172,450" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.6" fill="none"></path>
+</svg>

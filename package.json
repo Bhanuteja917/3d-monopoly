@@ -1,21 +1,26 @@
 {
-  "name": "3d-monopoly",
-  "version": "1.0.0",
-  "description": "Multiplayer 3D Monopoly (up to 6 players) for the web, playable from mobile devices.",
+  "name": "global-business",
+  "version": "0.1.0",
+  "description": "Global Business: 2.5D property-trading game for 4 to 8 players. Pass-and-play and room-code online play.",
   "type": "module",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node test/simulate.js"
+    "test": "node --test test/*.test.js",
+    "simulate": "node test/simulate.js"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT",
+  "license": "UNLICENSED",
+  "private": true,
   "dependencies": {
     "express": "^4.22.3",
     "socket.io": "^4.8.4",
     "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
   }
 }

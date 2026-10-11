@@ -1,15 +1,17 @@
+// Online play server: room codes, authoritative game state, disconnect bot and auction timers (§18).
 import express from 'express';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
-import { Game, GameError } from './game.js';
-import { MAX_PLAYERS, PLAYER_COLORS, TOKENS } from '../shared/board.js';
+import { CONFIG, MODES } from '../shared/config.js';
+import { createGame, act, actorsNow, botAction, timeoutAction, RuleError } from '../shared/engine.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 3000;
-const ROOM_IDLE_MS = 2 * 60 * 60 * 1000; // drop rooms nobody has touched for 2 hours
+const ROOM_IDLE_MS = 3 * 60 * 60 * 1000;
+const BOT_DELAY_MS = Number(process.env.BOT_DELAY_MS ?? 900);
 
 const app = express();
 app.use(express.static(path.join(root, 'public')));
@@ -20,194 +22,209 @@ app.get('/health', (_req, res) => res.json({ ok: true, rooms: rooms.size }));
 const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 10000, pingTimeout: 20000 });
 
-/** @type {Map<string, Room>} */
+/** @type {Map<string, any>} */
 const rooms = new Map();
-const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const newCode = () => {
   let code;
-  do {
-    code = Array.from({ length: 4 }, () => ROOM_CHARS[crypto.randomInt(ROOM_CHARS.length)]).join('');
-  } while (rooms.has(code));
+  do code = Array.from({ length: 5 }, () => CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]).join('');
+  while (rooms.has(code));
   return code;
 };
 const cleanName = (n) => String(n ?? '').replace(/\s+/g, ' ').trim().slice(0, 16) || 'Player';
+const cleanId = (id) => String(id ?? '').slice(0, 64);
 
-class Room {
-  constructor(code) {
-    this.code = code;
-    /** @type {Array<{id:string, token:string, name:string, color:string, piece:string, socketId:string|null}>} */
-    this.members = [];
-    this.hostId = null;
-    this.game = null;
-    this.touch();
+function cleanSettings(s = {}) {
+  const playerCount = Math.min(CONFIG.maxPlayers, Math.max(CONFIG.minPlayers, Number(s.playerCount) || 4));
+  const mode = MODES.includes(s.mode) ? s.mode : 'both';
+  const targets = CONFIG.limits[playerCount].targets;
+  const target = targets.includes(Number(s.target)) ? Number(s.target) : targets[1];
+  return { playerCount, mode, target };
+}
+
+function publicRoom(room) {
+  return {
+    code: room.code,
+    host: room.seats.findIndex((s) => s.clientId === room.hostClientId),
+    settings: room.settings,
+    started: !!room.state,
+    deadline: room.deadline,
+    seats: room.seats.map((s) => ({ name: s.name, connected: s.connected, bot: s.bot })),
+  };
+}
+
+function broadcast(room, events = []) {
+  room.lastActive = Date.now();
+  for (const [i, seat] of room.seats.entries()) {
+    if (!seat.socketId) continue;
+    io.to(seat.socketId).emit('room', { ...publicRoom(room), you: i });
   }
+  if (room.state) io.to(room.code).emit('game', { state: room.state, events });
+}
 
-  touch() { this.lastActive = Date.now(); }
+function apply(room, action) {
+  const events = act(room.state, action);
+  afterChange(room);
+  broadcast(room, events);
+}
 
-  addMember(name) {
-    const usedColors = new Set(this.members.map((m) => m.color));
-    const usedPieces = new Set(this.members.map((m) => m.piece));
-    const m = {
-      id: crypto.randomUUID().slice(0, 8),
-      token: crypto.randomBytes(16).toString('hex'),
-      name: cleanName(name),
-      color: PLAYER_COLORS.find((c) => !usedColors.has(c)),
-      piece: TOKENS.find((t) => !usedPieces.has(t)),
-      socketId: null,
-    };
-    this.members.push(m);
-    if (!this.hostId) this.hostId = m.id;
-    return m;
+// Seconds on the clock for timed stages, and what restarts the clock: swap offers run one 90 s clock for
+// everyone; bidding restarts its clock with every new bid.
+function clockFor(st) {
+  if (st.phase !== 'turn') return null;
+  const t = st.turn;
+  const base = `${st.turnNo}|${t.stage}`;
+  if (t.stage === 'auctionRespond') return { key: `${base}|${t.auction.offered}`, secs: CONFIG.auctionResponseSeconds };
+  if (t.stage === 'auctionConfirm') return { key: `${base}|${t.auction.offered}`, secs: CONFIG.auctionConfirmSeconds };
+  if (t.stage === 'bid') return { key: `${base}|${t.bid.space}|${t.bid.round}`, secs: CONFIG.bidAuction.seconds };
+  return null;
+}
+
+function afterChange(room) {
+  clearTimeout(room.botTimer);
+  const st = room.state;
+  const clock = st && st.phase !== 'ended' ? clockFor(st) : null;
+  if (!clock || clock.key !== room.clockKey) {
+    clearTimeout(room.deadlineTimer);
+    room.deadline = null;
+    room.clockKey = clock?.key ?? null;
   }
-
-  removeMember(id) {
-    this.members = this.members.filter((m) => m.id !== id);
-    if (this.hostId === id) this.hostId = this.members[0]?.id ?? null;
+  if (!st || st.phase === 'ended') return;
+  // FR-004: control returns to a rejoined player at the start of their next turn.
+  for (const [i, seat] of room.seats.entries()) {
+    if (!seat.bot || !seat.connected) continue;
+    const backAtTurnStart = st.phase === 'turn' && st.turn.active === i && st.turnNo > seat.rejoinedAtTurn;
+    if (st.phase !== 'turn' || backAtTurnStart) seat.bot = false;
   }
-
-  serialize() {
-    return {
-      code: this.code,
-      hostId: this.hostId,
-      members: this.members.map(({ id, name, color, piece, socketId }) => ({
-        id, name, color, piece, connected: !!socketId,
-      })),
-      game: this.game?.serialize() ?? null,
-      now: Date.now(),
-    };
+  // Swap offers and bids are simultaneous, so any of several seats may be a bot that has to act.
+  const botSeat = actorsNow(st).find((i) => room.seats[i].bot);
+  if (botSeat != null) {
+    room.botTimer = setTimeout(() => {
+      try { apply(room, botAction(room.state, botSeat)); } catch (e) { console.error('bot error', e); }
+    }, BOT_DELAY_MS);
   }
-
-  broadcast() {
-    this.touch();
-    io.to(this.code).emit('state', this.serialize());
+  // FR-115: timers online
+  if (clock && !room.deadline) {
+    room.deadline = Date.now() + clock.secs * 1000;
+    room.deadlineTimer = setTimeout(() => {
+      room.deadline = null;
+      room.clockKey = null;
+      const a = timeoutAction(room.state);
+      if (a) try { apply(room, a); } catch (e) { console.error('timeout error', e); }
+    }, clock.secs * 1000);
   }
 }
 
 io.on('connection', (socket) => {
   let room = null;
-  let me = null;
+  // Seat index is looked up by socket id because lobby seats shift when someone leaves.
+  const me = () => (room ? room.seats.findIndex((s) => s.socketId === socket.id) : -1);
 
-  const attach = (r, m) => {
-    if (m.socketId && m.socketId !== socket.id) io.sockets.sockets.get(m.socketId)?.disconnect(true);
-    room = r; me = m;
-    m.socketId = socket.id;
+  const attach = (r, i) => {
+    room = r;
+    const seat = r.seats[i];
+    seat.socketId = socket.id;
+    seat.connected = true;
     socket.join(r.code);
   };
-  const session = () => ({ ok: true, code: room.code, token: me.token, playerId: me.id });
-  const reply = (cb, data) => typeof cb === 'function' && cb(data);
 
-  socket.on('create', ({ name } = {}, cb) => {
-    if (room) return reply(cb, { ok: false, error: 'Already in a room.' });
-    const r = new Room(newCode());
-    rooms.set(r.code, r);
-    attach(r, r.addMember(name));
-    reply(cb, session());
-    r.broadcast();
+  socket.on('room:create', (msg = {}, cb = () => {}) => {
+    const code = newCode();
+    const r = { code, hostClientId: cleanId(msg.clientId), settings: cleanSettings(msg), seats: [], state: null, lastActive: Date.now() };
+    r.seats.push({ clientId: cleanId(msg.clientId), name: cleanName(msg.name), connected: true, bot: false, rejoinedAtTurn: 0 });
+    rooms.set(code, r);
+    attach(r, 0);
+    cb({ ok: true, code });
+    broadcast(r);
   });
 
-  socket.on('join', ({ code, name } = {}, cb) => {
-    if (room) return reply(cb, { ok: false, error: 'Already in a room.' });
-    const r = rooms.get(String(code ?? '').toUpperCase().trim());
-    if (!r) return reply(cb, { ok: false, error: 'Room not found. Check the code.' });
-    if (r.game) return reply(cb, { ok: false, error: 'That game has already started.' });
-    if (r.members.length >= MAX_PLAYERS) return reply(cb, { ok: false, error: 'Room is full (6 players).' });
-    attach(r, r.addMember(name));
-    reply(cb, session());
-    r.broadcast();
-  });
-
-  socket.on('resume', ({ code, token } = {}, cb) => {
-    const r = rooms.get(String(code ?? '').toUpperCase());
-    const m = r?.members.find((x) => x.token === token);
-    if (!m) return reply(cb, { ok: false, error: 'Session expired.' });
-    attach(r, m);
-    reply(cb, session());
-    r.broadcast();
-  });
-
-  socket.on('leave', (_ = {}, cb) => {
-    if (!room) return reply(cb, { ok: true });
-    const r = room;
-    socket.leave(r.code);
-    if (!r.game) {
-      r.removeMember(me.id);
-    } else {
-      me.socketId = null;
-      const p = r.game.player(me.id);
-      if (p && !p.bankrupt && r.game.phase !== 'over') {
-        try { r.game.bankrupt(me.id, 'left the game'); } catch { /* already out */ }
-      }
+  socket.on('room:join', (msg = {}, cb = () => {}) => {
+    const r = rooms.get(String(msg.code ?? '').trim().toUpperCase());
+    if (!r) return cb({ ok: false, error: 'Room not found' });
+    const clientId = cleanId(msg.clientId);
+    const existing = r.seats.findIndex((s) => s.clientId === clientId);
+    if (existing >= 0) {
+      // Rejoin (FR-004, NFR-004): bot keeps playing until this player's next turn starts.
+      const seat = r.seats[existing];
+      if (seat.socketId && seat.socketId !== socket.id) io.sockets.sockets.get(seat.socketId)?.disconnect(true);
+      attach(r, existing);
+      seat.rejoinedAtTurn = r.state?.turnNo ?? 0;
+      afterChange(r);
+      cb({ ok: true, code: r.code });
+      return broadcast(r);
     }
-    room = null; me = null;
-    reply(cb, { ok: true });
-    if (!r.members.length) { r.game?.dispose(); rooms.delete(r.code); } else r.broadcast();
+    if (r.state) return cb({ ok: false, error: 'Game already started' });
+    if (r.seats.length >= r.settings.playerCount) return cb({ ok: false, error: 'Room is full' });
+    r.seats.push({ clientId, name: cleanName(msg.name), connected: true, bot: false, rejoinedAtTurn: 0 });
+    attach(r, r.seats.length - 1);
+    cb({ ok: true, code: r.code });
+    broadcast(r);
   });
 
-  socket.on('kick', ({ playerId } = {}, cb) => {
-    if (!room || room.hostId !== me.id) return reply(cb, { ok: false, error: 'Only the host can do that.' });
-    if (playerId === me.id) return reply(cb, { ok: false, error: 'You cannot remove yourself.' });
-    const target = room.members.find((m) => m.id === playerId);
-    if (!target) return reply(cb, { ok: false, error: 'No such player.' });
-    if (!room.game) {
-      if (target.socketId) io.sockets.sockets.get(target.socketId)?.emit('kicked');
-      room.removeMember(playerId);
-    } else {
-      try { room.game.bankrupt(playerId, 'was removed by the host'); } catch (e) {
-        return reply(cb, { ok: false, error: e.message });
-      }
-    }
-    reply(cb, { ok: true });
-    room.broadcast();
+  socket.on('room:settings', (msg = {}) => {
+    if (!room || room.state || room.seats[me()]?.clientId !== room.hostClientId) return;
+    const s = cleanSettings(msg);
+    if (s.playerCount < room.seats.length) s.playerCount = room.seats.length;
+    room.settings = cleanSettings(s);
+    broadcast(room);
   });
 
-  socket.on('start', (_ = {}, cb) => {
-    if (!room || room.hostId !== me.id) return reply(cb, { ok: false, error: 'Only the host can start.' });
-    if (room.game) return reply(cb, { ok: false, error: 'Already started.' });
-    if (room.members.length < 2) return reply(cb, { ok: false, error: 'Need at least 2 players.' });
-    const r = room;
-    r.game = new Game(r.members.map((m) => ({ id: m.id, name: m.name, color: m.color, token: m.piece })), () => r.broadcast());
-    reply(cb, { ok: true });
-    r.broadcast();
+  socket.on('room:start', (_msg, cb = () => {}) => {
+    if (!room || room.state) return cb({ ok: false, error: 'Cannot start' });
+    if (room.seats[me()]?.clientId !== room.hostClientId) return cb({ ok: false, error: 'Only the host can start' });
+    if (room.seats.length !== room.settings.playerCount) return cb({ ok: false, error: 'Room is not full yet' }); // FR-172
+    room.state = createGame({
+      players: room.seats.map((s) => ({ name: s.name })),
+      mode: room.settings.mode,
+      wealthTarget: room.settings.target,
+    });
+    afterChange(room);
+    cb({ ok: true });
+    broadcast(room);
   });
 
-  socket.on('action', (action, cb) => {
-    if (!room?.game) return reply(cb, { ok: false, error: 'No game running.' });
+  socket.on('game:action', (action = {}, cb = () => {}) => {
+    if (!room?.state) return cb({ ok: false, error: 'No game' });
+    const seatIdx = me();
+    if (seatIdx < 0) return cb({ ok: false, error: 'Not seated' });
+    if (room.seats[seatIdx].bot) return cb({ ok: false, error: 'The bot is playing for you until your next turn' });
     try {
-      room.game.act(me.id, action);
-      reply(cb, { ok: true });
-      room.broadcast();
+      apply(room, { ...action, system: false, player: seatIdx }); // FR-173: server validates every action; timers are server-only
+      cb({ ok: true });
     } catch (e) {
-      if (!(e instanceof GameError)) console.error(e);
-      reply(cb, { ok: false, error: e instanceof GameError ? e.message : 'Server error.' });
+      if (!(e instanceof RuleError)) console.error(e);
+      cb({ ok: false, error: e.message });
     }
   });
 
-  socket.on('chat', ({ text } = {}) => {
-    if (!room || !me) return;
-    const msg = String(text ?? '').trim().slice(0, 200);
-    if (!msg) return;
-    io.to(room.code).emit('chat', { from: me.id, name: me.name, color: me.color, text: msg, t: Date.now() });
-  });
+  socket.on('room:leave', () => socket.disconnect(true));
 
   socket.on('disconnect', () => {
-    if (!room || !me || me.socketId !== socket.id) return;
-    me.socketId = null;
-    room.broadcast();
+    if (!room) return;
+    const seatIdx = me();
+    if (seatIdx < 0) return;
+    const seat = room.seats[seatIdx];
+    seat.socketId = null;
+    seat.connected = false;
+    if (!room.state) {
+      // Lobby: free the seat.
+      room.seats.splice(seatIdx, 1);
+      if (!room.seats.length) { rooms.delete(room.code); return; }
+      if (seat.clientId === room.hostClientId) room.hostClientId = room.seats[0].clientId;
+      for (const [i, s] of room.seats.entries()) if (s.socketId) io.sockets.sockets.get(s.socketId)?.emit('room', { ...publicRoom(room), you: i });
+      return;
+    }
+    seat.bot = true; // FR-004
+    afterChange(room);
+    broadcast(room);
   });
 });
 
 setInterval(() => {
   const now = Date.now();
   for (const [code, r] of rooms) {
-    const anyoneHere = r.members.some((m) => m.socketId);
-    if (!anyoneHere && now - r.lastActive > ROOM_IDLE_MS) {
-      r.game?.dispose();
-      rooms.delete(code);
-    }
+    if (now - r.lastActive > ROOM_IDLE_MS) { clearTimeout(r.botTimer); clearTimeout(r.deadlineTimer); rooms.delete(code); }
   }
-}, 60 * 1000).unref();
+}, 10 * 60 * 1000).unref();
 
-server.listen(PORT, () => {
-  console.log(`3D Monopoly running on http://localhost:${PORT}`);
-});
+server.listen(PORT, () => console.log(`Global Business on http://localhost:${PORT}`));
