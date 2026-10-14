@@ -231,13 +231,20 @@ function stepCounts(state, pid) {
 }
 
 // ---------- Legality checks (also used by the UI) ----------
-export function canBuild(state, pid, i) {
+/** Set rules for one more step on city `i` (FR-063..065, FR-067), ignoring when in the turn it happens. */
+function buildable(state, pid, i) {
   const c = state.props[i];
   if (!c || c.kind !== 'city' || c.owner !== pid) return false;
   if (!completeSet(state, pid, c.country)) return false; // FR-063, FR-067
   if (countryProps(state, c.country).some((x) => x.mortgaged)) return false;
   if (c.steps >= 3 || c.steps !== minSteps(state, c.country)) return false; // FR-064
   return P(state, pid).cash >= buildCost(state, pid, c);
+}
+/** Upgrades only happen on the city you just landed on, once per turn (stage 'upgrade'). */
+export function canBuild(state, pid, i) {
+  const t = state.turn;
+  if (state.phase !== 'turn' || !t || t.stage !== 'upgrade' || t.active !== pid || t.built || t.upgrade !== i) return false;
+  return buildable(state, pid, i);
 }
 export function canSell(state, pid, i) {
   const c = state.props[i];
@@ -379,13 +386,13 @@ export function act(state, action) {
   state.lastEvents = [];
   const actor = action.player;
   if (state.phase === 'ended') throw new RuleError('The game is over');
-  const manageAction = ['build', 'sell', 'mortgage', 'unmortgage'].includes(action.type);
+  const manageAction = ['sell', 'mortgage', 'unmortgage'].includes(action.type);
   // `system` actions (timers running out) come from the server or the local clock, never from a player.
   if (!action.system && !actorsNow(state).includes(actor)) throw new RuleError('Not your move');
   if (action.system && action.type !== 'expire') throw new RuleError('Unknown system action');
   const handler = HANDLERS[action.type];
   if (!handler) throw new RuleError(`Unknown action ${action.type}`);
-  // Step 4 (build, sell, mortgage) happens on your own turn before you roll, or while a doubles re-roll is pending.
+  // Step 4 (sell, mortgage) happens on your own turn before you roll, or while a doubles re-roll is pending.
   if (manageAction && !(state.phase === 'turn' && ['roll', 'manage'].includes(state.turn.stage))) throw new RuleError('You can only manage properties before you roll');
   handler(state, action);
   checkWealth(state); // FR-161: immediate wealth check
@@ -638,15 +645,23 @@ const HANDLERS = {
 
   dismissCard(state) { needStage(state, 'card'); continueAfterCard(state); },
 
-  // Step 4 (FR-031): active player only, checked in act()
+  // Upgrade (FR-031): active player, on the city they just landed on, once per turn
   build(state, { player, space }) {
+    const t = needStage(state, 'upgrade');
+    if (t.built) throw new RuleError('You already upgraded this turn');
     if (!canBuild(state, player, space)) throw new RuleError('You cannot build there');
     const c = state.props[space];
     const cost = buildCost(state, player, c);
     P(state, player).cash -= cost;
     c.steps += 1;
+    t.built = true;
     emit(state, { type: 'build', player, space, steps: c.steps });
     log(state, `${nm(state, player)} built a ${STEP_NAMES[c.steps]} in ${c.name} (${fmt(cost)}).`);
+    toManage(state);
+  },
+  skipBuild(state) {
+    needStage(state, 'upgrade');
+    toManage(state);
   },
   sell(state, { player, space }) {
     if (!canSell(state, player, space)) throw new RuleError('You cannot sell there');
@@ -752,7 +767,7 @@ function startTurn(state, pid) {
   const p = P(state, pid);
   state.turnNo += 1;
   state.turn = {
-    active: pid, stage: 'roll', dice: null, extraRoll: false, extraUsed: false, rolls: 0,
+    active: pid, stage: 'roll', dice: null, extraRoll: false, extraUsed: false, rolls: 0, built: false, upgrade: null,
     escaped: false, buy: null, auction: null, bid: null, card: null, travel: null, pendingDice: null, turnNo: state.turnNo,
   };
   emit(state, { type: 'turnStart', player: pid });
@@ -830,7 +845,16 @@ function resolveSpace(state, p) {
   if (space.kind !== 'corner') {
     const x = state.props[p.pos];
     if (x.owner == null) { t.stage = 'buy'; t.buy = p.pos; return; }
-    if (x.owner === p.id) { log(state, `${p.name} visits their own ${x.name}.`); return toManage(state); }
+    if (x.owner === p.id) {
+      // Landing on your own city is the only time you may upgrade it, and only once per turn.
+      if (x.kind === 'city' && !t.built && buildable(state, p.id, p.pos)) {
+        t.stage = 'upgrade'; t.upgrade = p.pos;
+        log(state, `${p.name} visits their own ${x.name} and may upgrade it.`);
+        return;
+      }
+      log(state, `${p.name} visits their own ${x.name}.`);
+      return toManage(state);
+    }
     if (x.mortgaged) { log(state, `${x.name} is mortgaged: no rent.`); return toManage(state); }
     if (isTransport(x)) {
       // Transport: pick one of three trips and pay the owner a fare by distance (no flat rent).
@@ -1014,7 +1038,8 @@ export function botAction(state, pid) {
   const t = state.turn;
   switch (t.stage) {
     case 'jail': return { type: 'useJailCard', player: pid };
-    case 'roll': return botBuild(state, pid) ?? { type: 'roll', player: pid };
+    case 'roll': return { type: 'roll', player: pid };
+    case 'upgrade': return botBuild(state, pid) ?? { type: 'skipBuild', player: pid };
     case 'reroll': return { type: 'keepRoll', player: pid };
     case 'card': return { type: 'dismissCard', player: pid };
     case 'buy': return p.cash - state.props[t.buy].price >= reserve ? { type: 'buy', player: pid } : { type: 'decline', player: pid };
@@ -1036,17 +1061,16 @@ export function botAction(state, pid) {
       const v = VEHICLES.filter((x) => state.vehicles[x.id] === null).sort((a, b) => a.price - b.price)[0];
       return v && p.cash - v.price >= reserve ? { type: 'buyVehicle', player: pid, vehicle: v.id } : { type: 'skipShop', player: pid };
     }
-    case 'manage': return botBuild(state, pid) ?? { type: 'roll', player: pid }; // only reached with a re-roll pending
+    case 'manage': return { type: 'roll', player: pid }; // only reached with a re-roll pending
   }
   return null;
 }
 
-// Bot builds the cheapest legal step while keeping its cash reserve (FR-174).
+// Bot upgrades the city it landed on if it keeps its cash reserve (FR-174).
 function botBuild(state, pid) {
   const p = P(state, pid);
-  const options = propsOf(state, pid).filter((i) => canBuild(state, pid, i))
-    .sort((a, b) => buildCost(state, pid, state.props[a]) - buildCost(state, pid, state.props[b]) || a - b);
-  if (options.length && p.cash - buildCost(state, pid, state.props[options[0]]) >= CONFIG.botCashReserve) return { type: 'build', player: pid, space: options[0] };
+  const i = state.turn.upgrade;
+  if (canBuild(state, pid, i) && p.cash - buildCost(state, pid, state.props[i]) >= CONFIG.botCashReserve) return { type: 'build', player: pid, space: i };
   return null;
 }
 

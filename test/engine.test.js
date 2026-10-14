@@ -35,6 +35,8 @@ function rollTo(s, pid, target, dice) {
   return act(s, { type: 'roll', player: pid });
 }
 const doAct = (s, type, extra = {}) => act(s, { type, player: whoActs(s), ...extra });
+// Player 0 lands on city `space` (their own): opens the upgrade offer when the set rules allow one.
+const landOn = (s, space) => rollTo(s, 0, space, [1]);
 function finishStage(s) {
   // Resolve any pending decision for the active player the passive way.
   const st = s.turn.stage;
@@ -42,6 +44,7 @@ function finishStage(s) {
   else if (st === 'card') doAct(s, 'dismissCard');
   else if (st === 'auctionPick') doAct(s, 'auctionSkip');
   else if (st === 'shop') doAct(s, 'skipShop');
+  else if (st === 'upgrade') doAct(s, 'skipBuild');
 }
 function toTurnOf(s, pid) {
   let guard = 0;
@@ -333,30 +336,81 @@ describe('Building, selling, mortgage (§10.3-10.5)', () => {
     const s = game(4);
     const cs = A(s);
     give(s, 0, cs.slice(0, 2));
-    assert.equal(canBuild(s, 0, cs[0]), false);
-    give(s, 0, cs);
-    s.props[cs[2]].mortgaged = true;
-    assert.equal(canBuild(s, 0, cs[0]), false);
-    s.props[cs[2]].mortgaged = false;
-    assert.equal(canBuild(s, 0, cs[0]), true);
-    const price = s.props[cs[0]].price;
-    const cash = s.players[0].cash;
-    doAct(s, 'build', { space: cs[0] });
-    assert.equal(s.players[0].cash, cash - price / 2);
-    assert.throws(() => doAct(s, 'build', { space: cs[0] }), /cannot build/); // even build
-    doAct(s, 'build', { space: cs[1] });
-    doAct(s, 'build', { space: cs[2] });
-    doAct(s, 'build', { space: cs[0] }); // now step 2 allowed
-    assert.equal(s.props[cs[0]].steps, 2);
+    landOn(s, cs[0]);
+    assert.notEqual(s.turn.stage, 'upgrade'); // incomplete set: no offer
+    const s2 = game(4);
+    give(s2, 0, cs);
+    s2.props[cs[2]].mortgaged = true;
+    landOn(s2, cs[0]);
+    assert.notEqual(s2.turn.stage, 'upgrade'); // mortgage in the set: no offer
+    const s3 = game(4);
+    give(s3, 0, cs);
+    landOn(s3, cs[0]);
+    assert.equal(s3.turn.stage, 'upgrade');
+    assert.equal(canBuild(s3, 0, cs[0]), true);
+    const price = s3.props[cs[0]].price;
+    const cash = s3.players[0].cash;
+    doAct(s3, 'build', { space: cs[0] });
+    assert.equal(s3.players[0].cash, cash - price / 2);
+    assert.equal(s3.props[cs[0]].steps, 1);
   });
-  test('no limit on builds per turn and tower is the top step (FR-065)', () => {
+  test('even build: a city ahead of its set cannot be upgraded when landed on (FR-064)', () => {
+    const s = game(4);
+    const cs = A(s);
+    give(s, 0, cs);
+    s.props[cs[0]].steps = 1;
+    landOn(s, cs[0]);
+    assert.notEqual(s.turn.stage, 'upgrade');
+  });
+  test('only on the landed city, only once per turn, skippable (FR-031)', () => {
     const s = game(4, { mode: 'turns' });
     const cs = B(s);
     give(s, 0, cs);
     s.players[0].cash = 100000;
-    for (let k = 0; k < 3; k++) for (const c of cs) doAct(s, 'build', { space: c });
-    assert.deepEqual(cs.map((c) => s.props[c].steps), [3, 3]);
+    assert.equal(canBuild(s, 0, cs[0]), false); // not before landing
+    assert.throws(() => doAct(s, 'build', { space: cs[0] }), /Not allowed now/);
+    s.turn.extraRoll = false;
+    landOn(s, cs[0]);
+    assert.equal(s.turn.stage, 'upgrade');
+    assert.throws(() => doAct(s, 'build', { space: cs[1] }), /cannot build/); // other city of the set
+    doAct(s, 'build', { space: cs[0] });
+    assert.equal(s.props[cs[0]].steps, 1);
+    assert.notEqual(s.turn.stage, 'upgrade');
     assert.equal(canBuild(s, 0, cs[0]), false);
+    assert.equal(canBuild(s, 0, cs[1]), false);
+    assert.throws(() => doAct(s, 'build', { space: cs[0] }), /Not allowed now/);
+  });
+  test('one upgrade per turn even across a doubles re-roll (FR-031)', () => {
+    const s = game(4, { mode: 'turns' });
+    const cs = B(s);
+    give(s, 0, cs);
+    s.players[0].cash = 100000;
+    s.players[0].pos = (cs[0] - 2 + s.spaces.length) % s.spaces.length;
+    s.forcedDice = [[1, 1]];
+    act(s, { type: 'roll', player: 0 });
+    assert.equal(s.turn.stage, 'upgrade');
+    doAct(s, 'build', { space: cs[0] });
+    assert.equal(s.turn.stage, 'manage'); // doubles: roll again
+    s.players[0].pos = (cs[1] - 1 + s.spaces.length) % s.spaces.length;
+    s.forcedDice = [[1]];
+    act(s, { type: 'roll', player: 0 });
+    assert.notEqual(s.turn.stage, 'upgrade'); // already upgraded this turn
+    assert.equal(s.props[cs[1]].steps, 0);
+  });
+  test('skipBuild declines the offer and tower is the top step (FR-065)', () => {
+    const s = game(4, { mode: 'turns' });
+    const cs = B(s);
+    give(s, 0, cs);
+    s.players[0].cash = 100000;
+    landOn(s, cs[0]);
+    doAct(s, 'skipBuild');
+    assert.equal(s.props[cs[0]].steps, 0);
+    const s2 = game(4, { mode: 'turns' });
+    give(s2, 0, cs);
+    s2.players[0].cash = 100000;
+    s2.props[cs[0]].steps = 3; s2.props[cs[1]].steps = 3;
+    landOn(s2, cs[0]);
+    assert.notEqual(s2.turn.stage, 'upgrade');
   });
   test('Delivery Truck makes upgrades 10% cheaper (VH-04)', () => {
     const s = game(6);
@@ -402,12 +456,12 @@ describe('Building, selling, mortgage (§10.3-10.5)', () => {
   test('step 4 actions only on your own turn, before rolling (FR-031)', () => {
     const s = game(4);
     give(s, 1, B(s));
-    assert.throws(() => act(s, { type: 'build', player: 1, space: B(s)[0] }), /Not your move/);
+    assert.throws(() => act(s, { type: 'sell', player: 1, space: B(s)[0] }), /Not your move/);
     give(s, 0, B(s));
-    doAct(s, 'build', { space: B(s)[0] }); // before the roll: allowed
+    doAct(s, 'mortgage', { space: B(s)[0] }); // before the roll: allowed
     rollTo(s, 0, NEUTRAL, [1]);
     assert.equal(s.turn.stage, 'buy');
-    assert.throws(() => doAct(s, 'build', { space: B(s)[1] }), /before you roll/); // not mid-decision
+    assert.throws(() => doAct(s, 'unmortgage', { space: B(s)[0] }), /before you roll/); // not mid-decision
   });
 });
 
@@ -1116,7 +1170,7 @@ describe('Precedence', () => {
     const s = game(4);
     give(s, 0, B(s));
     rollTo(s, 0, NEUTRAL, [1]);
-    assert.throws(() => doAct(s, 'build', { space: B(s)[0] }), /before you roll/);
+    assert.throws(() => doAct(s, 'build', { space: B(s)[0] }), /Not allowed now/);
   });
   test('step 4 actions before win check: building does not lower net worth below target trigger', () => {
     const s = game(4, { mode: 'wealth', wealthTarget: 30000 });
@@ -1149,12 +1203,15 @@ describe('Disconnect bot', () => {
     rollTo(s2, 0, cornerAt(s2, 'shop'), [1, 2]);
     assert.deepEqual(botAction(s2, 0), { type: 'buyVehicle', player: 0, vehicle: 'VH-01' });
   });
-  test('builds cheapest legal step within reserve before rolling', () => {
+  test('upgrades the landed city within reserve, otherwise skips (FR-174)', () => {
     const s = game(4);
     give(s, 0, B(s));
+    assert.equal(botAction(s, 0).type, 'roll'); // no building before rolling
+    landOn(s, B(s)[0]);
+    assert.equal(s.turn.stage, 'upgrade');
     assert.equal(botAction(s, 0).type, 'build');
-    s.players[0].cash = 3100;
-    assert.equal(botAction(s, 0).type, 'roll');
+    s.players[0].cash = Math.floor(s.props[B(s)[0]].price * 0.5) + 100;
+    assert.equal(botAction(s, 0).type, 'skipBuild');
   });
   test('bot-only games always terminate in limited modes', () => {
     for (const n of [4, 6, 8]) {

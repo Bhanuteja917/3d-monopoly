@@ -63,6 +63,8 @@ export const S = {
   mortgage: 'Mortgage',
   unmortgage: 'Unmortgage',
   buyFor: 'Buy {price}',
+  upgradeFor: 'Build a {what} {price}',
+  skipUpgrade: 'Skip',
   pass: 'Pass',
   ok: 'OK',
   cancel: 'Close',

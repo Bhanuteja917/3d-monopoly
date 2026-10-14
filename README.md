@@ -74,8 +74,10 @@ This rewrites `public/cards/*.svg`. Card drawing lives in `public/js/cards.js` (
 
 ## Notes and open points
 
-- Turns end on their own as soon as the roll is resolved (no End turn button). Build, sell, mortgage and
+- Turns end on their own as soon as the roll is resolved (no End turn button). Sell, mortgage and
   unmortgage happen on your own turn before you roll, or while a doubles re-roll is pending.
+- Upgrading: you can only build on a city of a complete set by landing on it yourself (stage `upgrade`), and only one
+  upgrade per turn (`turn.built`, kept across doubles re-rolls). Upgrades are still even across the set; skipping is allowed.
 
 - The board is one fixed 47-space world circuit for every player count (not the PRD's one-side-per-player polygon):
   12 colour sets of 2-4 cities (33 cities), 6 utilities and 8 corners (Start, 3 Auctions, Jail, Chance, Tax, Shopping Center).

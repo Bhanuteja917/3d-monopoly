@@ -520,15 +520,14 @@ function renderActions(st) {
   const hint = tn.stage === 'roll' && p.jailed ? (p.jailTurns >= CONFIG.jailMaxFailedRolls ? '' : st.numDice === 1 ? S.jailHint1 : S.jailHint2) : '';
   const owned = E.propsOf(st, p.id);
   const can = {
-    build: owned.some((i) => E.canBuild(st, p.id, i)),
     sell: owned.some((i) => E.canSell(st, p.id, i)),
     mortgage: owned.some((i) => E.canMortgage(st, p.id, i)),
     unmortgage: owned.some((i) => E.canUnmortgage(st, p.id, i)),
   };
-  const icons = { build: '🏗️', sell: '💸', mortgage: '🏦', unmortgage: '🔓' };
+  const icons = { sell: '💸', mortgage: '🏦', unmortgage: '🔓' };
   const mb = (k, cls) => `<button class="btn ${cls} btn-manage" data-sheet="${k}" ${can[k] ? '' : 'disabled'}><span class="ic">${icons[k]}</span><span class="tx">${S[k]}</span></button>`;
   el.innerHTML = (hint ? `<div class="waiting">🔒 ${hint}</div>` : '')
-    + mb('build', 'btn-green') + mb('sell', 'btn-blue') + mb('mortgage', 'btn-purple') + mb('unmortgage', 'btn-purple')
+    + mb('sell', 'btn-blue') + mb('mortgage', 'btn-purple') + mb('unmortgage', 'btn-purple')
     + `<button class="btn btn-yellow btn-roll" id="a-roll"><span class="ic">🎲</span><span class="tx">${tn.stage === 'manage' ? S.rollAgain : S.roll}</span></button>`;
   for (const b of el.querySelectorAll('[data-sheet]')) b.onclick = () => { sheet = b.dataset.sheet; renderStageModal(shown, true); };
   $('#a-roll').onclick = () => { sheet = null; el.innerHTML = ''; $('#turn-bar').classList.add('hidden'); send({ type: 'roll' }); };
@@ -572,10 +571,11 @@ function highlightFor(st) {
   if (tn.stage === 'auctionRespond') return [tn.auction.offered, ...E.propsOf(st, actor)];
   if ((tn.stage === 'manage' || tn.stage === 'roll') && sheet) return E.propsOf(st, actor).filter((i) => sheetCan(st, actor, i));
   if (tn.stage === 'buy') return [tn.buy];
+  if (tn.stage === 'upgrade') return [tn.upgrade];
   if (tn.stage === 'travel') return tn.travel.options.map((o) => o.space);
   return [];
 }
-const sheetCan = (st, pid, i) => ({ build: E.canBuild, sell: E.canSell, mortgage: E.canMortgage, unmortgage: E.canUnmortgage })[sheet]?.(st, pid, i);
+const sheetCan = (st, pid, i) => ({ sell: E.canSell, mortgage: E.canMortgage, unmortgage: E.canUnmortgage })[sheet]?.(st, pid, i);
 
 // ---------- Hand-off (FR-170, FR-116) ----------
 // The character SVGs have a lot of empty canvas around the drawing; crop to the drawn pixels (square,
@@ -707,6 +707,11 @@ function stageModalHTML(st, actor) {
       const x = st.props[tn.buy];
       return `${propCardHTML(st, tn.buy)}<div class="modal-buttons"><button class="btn btn-green btn-big" id="m-buy" ${p.cash < x.price ? 'disabled' : ''}>${t(S.buyFor, { price: fmt(x.price) })}</button><button class="btn btn-red" id="m-pass">${S.pass}</button></div>`;
     }
+    case 'upgrade': {
+      // Landed on your own city with a complete set: one upgrade per turn, or skip.
+      const x = st.props[tn.upgrade];
+      return `${propCardHTML(st, tn.upgrade)}<div class="modal-buttons"><button class="btn btn-green btn-big" id="m-build" ${E.canBuild(st, p.id, tn.upgrade) ? '' : 'disabled'}>${t(S.upgradeFor, { what: S.steps[x.steps + 1].toLowerCase(), price: fmt(E.buildCost(st, p.id, x)) })}</button><button class="btn btn-red" id="m-skipbuild">${S.skipUpgrade}</button></div>`;
+    }
     case 'travel': {
       // Transport: three trips, fare by distance (tap one here or its highlighted tile on the board).
       const hub = st.props[tn.travel.from];
@@ -763,7 +768,6 @@ function stageModalHTML(st, actor) {
       const own = E.propsOf(st, p.id).filter((i) => sheetCan(st, p.id, i));
       const value = (i) => {
         const x = st.props[i];
-        if (sheet === 'build') return `-${fmt(E.buildCost(st, p.id, x))}`;
         if (sheet === 'sell') return `+${fmt(E.sellValue(x))}`;
         if (sheet === 'mortgage') return `+${fmt(E.mortgageValue(x))}`;
         return `-${fmt(E.unmortgageCost(x))}`;
@@ -786,6 +790,8 @@ function wireStageModal(st, actor) {
   onModal('#m-keep', a('keepRoll'));
   onModal('#m-buy', a('buy'));
   onModal('#m-pass', a('decline'));
+  onModal('#m-build', (el) => send({ type: 'build', player: actor, space: st.turn.upgrade }));
+  onModal('#m-skipbuild', a('skipBuild'));
   onModal('#m-stay', a('stayPay'));
   onModal('[data-bid]', (el) => send({ type: 'bid', player: Number(el.dataset.bid), raise: Number(el.dataset.raise) }));
   onModal('[data-bidpass]', (el) => send({ type: 'bidPass', player: Number(el.dataset.bidpass) }));
