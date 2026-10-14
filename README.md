@@ -89,7 +89,8 @@ This rewrites `public/cards/*.svg`. Card drawing lives in `public/js/cards.js` (
   Owned cards show the rent due (green pill) instead of the price.
 - Utilities (Hydro Dam, Oil Refinery, Solar Farm) and Travel (High-Speed Rail, Seaport, Airport) are two separate sets of three;
   rent counts only the owner's holdings in the same set.
-- Declining a purchase sends it to auction: the other players bid at the same time from a random 20-50% discount
+- Jail: from your first jail turn you may pay 500 to leave, use a Get Out of Jail Free card, or roll for doubles (a 6 on one die). On your third jail turn you walk free without paying.
+- Declining a purchase sends it to auction (unless the lander cannot afford the city: then it simply stays unowned): the other players bid at the same time from a random 20-50% discount
   (`CONFIG.bidAuction`), the clock (20 s) restarts with every bid, the winner pays the bank and the player who declined collects
   a random 10-15% of the winning bid. No bids: it stays unowned.
 - Swap auctions (Auction corners): every other player picks an offer at the same time within 90 s; a completed swap pays both

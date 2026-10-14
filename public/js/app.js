@@ -517,7 +517,7 @@ function renderActions(st) {
   if (tn.stage !== 'roll' && tn.stage !== 'manage') { el.innerHTML = ''; return; }
   // Your turn, before rolling (or with a doubles re-roll pending): manage properties, then roll.
   // The turn ends by itself once the roll is resolved.
-  const hint = tn.stage === 'roll' && p.jailed ? (p.jailTurns >= CONFIG.jailMaxFailedRolls ? '' : st.numDice === 1 ? S.jailHint1 : S.jailHint2) : '';
+  const hint = tn.stage === 'roll' && p.jailed ? (st.numDice === 1 ? S.jailHint1 : S.jailHint2) : '';
   const owned = E.propsOf(st, p.id);
   const can = {
     sell: owned.some((i) => E.canSell(st, p.id, i)),
@@ -693,10 +693,11 @@ function stageModalHTML(st, actor) {
   }
   switch (tn.stage) {
     case 'jail': {
-      const third = p.jailTurns >= CONFIG.jailMaxFailedRolls;
-      return `<h2 class="modal-title">🔒 ${S.jailTitle}</h2><p class="modal-sub">${third ? t(S.jailHintThird, { fee: fmt(CONFIG.jailFee) }) : st.numDice === 1 ? S.jailHint1 : S.jailHint2}</p>
-        <div class="modal-buttons"><button class="btn btn-green" id="m-card">🎫 ${S.jailUseCard}</button>
-        <button class="btn btn-yellow" id="m-nocard">${third ? t(S.jailPay, { fee: fmt(CONFIG.jailFee) }) : '🎲 ' + S.jailRoll}</button></div>`;
+      const fee = fmt(CONFIG.jailFee);
+      return `<h2 class="modal-title">🔒 ${S.jailTitle}</h2><p class="modal-sub">${st.numDice === 1 ? S.jailHint1 : S.jailHint2}</p>
+        <div class="modal-buttons">${p.jailCard ? `<button class="btn btn-green" id="m-card">🎫 ${S.jailUseCard}</button>` : ''}
+        <button class="btn btn-purple" id="m-paylift" ${p.cash < CONFIG.jailFee ? 'disabled' : ''}>💰 ${t(S.jailPayLeave, { fee })}</button>
+        <button class="btn btn-yellow" id="m-nocard">🎲 ${S.jailRoll}</button></div>`;
     }
     case 'reroll': {
       const total = tn.pendingDice.reduce((a, b) => a + b, 0);
@@ -786,6 +787,7 @@ function wireStageModal(st, actor) {
   onModal('[data-token]', (el) => send({ type: 'pickToken', player: actor, token: el.dataset.token }));
   onModal('#m-card', a('useJailCard'));
   onModal('#m-nocard', a('skipJailCard'));
+  onModal('#m-paylift', a('payJail'));
   onModal('#m-reroll', a('useReroll'));
   onModal('#m-keep', a('keepRoll'));
   onModal('#m-buy', a('buy'));

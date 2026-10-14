@@ -176,6 +176,17 @@ describe('Dice and movement', () => {
     assert.equal(s.turn.active, 1);
     assert.equal(s.turn.stage, 'roll');
   });
+  test('a lander who cannot afford the city is not forced into an auction', () => {
+    const s = game(4);
+    const [c] = A(s);
+    s.players[0].cash = 10;
+    rollTo(s, 0, c, [1]);
+    assert.equal(s.turn.stage, 'buy');
+    doAct(s, 'decline');
+    assert.equal(s.props[c].owner, null);
+    assert.notEqual(s.turn.stage, 'bid');
+    assert.equal(s.turn.active, 1); // the turn moved on
+  });
   test('dice: real faces, flatter totals than 2d6, more doubles, no repeat-total streaks', () => {
     const s = game(4);
     const N = 20000;
@@ -631,18 +642,45 @@ describe('Jail', () => {
     assert.equal(s.players[0].jailed, true);
     assert.equal(s.players[0].jailTurns, 1);
     toTurnOf(s, 0);
+    assert.equal(s.turn.stage, 'jail');
+    doAct(s, 'skipJailCard'); // chose to roll for it
     s.forcedDice = [[6]];
     doAct(s, 'roll');
     assert.equal(s.players[0].jailed, false);
   });
-  test('third jail turn: pay 500, released, roll normally (FR-094, §21)', () => {
+  test('first jail turn: may pay 500 to leave at once, then roll normally', () => {
+    const s = game(5);
+    const jail = cornerAt(s, 'jail');
+    Object.assign(s.players[1], { jailed: true, pos: jail });
+    rollTo(s, 0, 1, [1, 2]); finishStage(s);
+    assert.equal(s.turn.active, 1);
+    assert.equal(s.turn.stage, 'jail');
+    doAct(s, 'payJail');
+    assert.equal(s.players[1].jailed, false);
+    assert.equal(s.players[1].cash, 15000 - 500);
+    assert.equal(s.turn.stage, 'roll');
+    s.forcedDice = [[3, 4]];
+    doAct(s, 'roll');
+    assert.equal(s.players[1].pos, (jail + 7) % s.spaces.length);
+  });
+  test('paying out of jail needs the cash and a card needs a card', () => {
+    const s = game(5);
+    const jail = cornerAt(s, 'jail');
+    Object.assign(s.players[1], { jailed: true, pos: jail, cash: 400 });
+    rollTo(s, 0, 1, [1, 2]); finishStage(s);
+    assert.throws(() => doAct(s, 'payJail'), /You need/);
+    assert.throws(() => doAct(s, 'useJailCard'), /no Get Out of Jail Free/);
+    assert.equal(s.players[1].cash, 400);
+    assert.equal(s.players[1].jailed, true);
+  });
+  test('third jail turn: released free of charge, roll normally', () => {
     const s = game(5);
     const jail = cornerAt(s, 'jail');
     Object.assign(s.players[1], { jailed: true, pos: jail, jailTurns: 2 });
     rollTo(s, 0, 1, [1, 2]); finishStage(s);
     assert.equal(s.turn.active, 1);
     assert.equal(s.players[1].jailed, false);
-    assert.equal(s.players[1].cash, 15000 - 500);
+    assert.equal(s.players[1].cash, 15000); // nothing paid
     assert.equal(s.turn.stage, 'roll');
   });
   test('Get Out of Jail Free is used at turn start and returns to the bottom of the deck (FR-092, FR-132)', () => {
@@ -670,6 +708,7 @@ describe('Jail', () => {
     give(s, 1, B(s));
     doAct(s, 'mortgage', { space: B(s)[0] }); // jailed, before the escape roll
     assert.equal(s.props[B(s)[0]].mortgaged, true);
+    doAct(s, 'skipJailCard'); // choose to roll for it
     s.forcedDice = [[2]];
     doAct(s, 'roll');
     assert.equal(s.players[1].jailed, true);

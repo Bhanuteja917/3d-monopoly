@@ -393,7 +393,7 @@ export function act(state, action) {
   const handler = HANDLERS[action.type];
   if (!handler) throw new RuleError(`Unknown action ${action.type}`);
   // Step 4 (sell, mortgage) happens on your own turn before you roll, or while a doubles re-roll is pending.
-  if (manageAction && !(state.phase === 'turn' && ['roll', 'manage'].includes(state.turn.stage))) throw new RuleError('You can only manage properties before you roll');
+  if (manageAction && !(state.phase === 'turn' && ['roll', 'manage', 'jail'].includes(state.turn.stage))) throw new RuleError('You can only manage properties before you roll');
   handler(state, action);
   checkWealth(state); // FR-161: immediate wealth check
   return state.lastEvents;
@@ -456,16 +456,24 @@ const HANDLERS = {
   useJailCard(state, { player }) {
     const t = needStage(state, 'jail');
     const p = P(state, player);
+    if (!p.jailCard) throw new RuleError('You have no Get Out of Jail Free card');
     p.jailCard = false;
     state.chance.deck.push('CH-11'); // FR-132: back to the bottom of the deck
     release(state, p, 'used Get Out of Jail Free');
     t.stage = 'roll';
   },
+  // Pay the fee to leave right away, from the first jail turn. Then roll normally.
+  payJail(state, { player }) {
+    const t = needStage(state, 'jail');
+    const p = P(state, player);
+    if (p.cash < CONFIG.jailFee) throw new RuleError(`You need ${fmt(CONFIG.jailFee)} to pay your way out`);
+    payJailFee(state, p);
+    if (!p.bankrupt) t.stage = 'roll';
+  },
   skipJailCard(state, { player }) {
     const t = needStage(state, 'jail');
     const p = P(state, player);
     t.stage = 'roll';
-    if (p.jailTurns >= CONFIG.jailMaxFailedRolls) payJailFee(state, p);
   },
 
   roll(state, { player }) {
@@ -534,6 +542,7 @@ const HANDLERS = {
     toManage(state);
   },
   // Declining sends the property to auction: the other players bid, starting at a random 20-50% discount.
+  // A lander who cannot afford it is not forced into an auction: the property just stays unowned.
   decline(state, { player }) {
     const t = needStage(state, 'buy');
     const i = t.buy, x = state.props[i];
@@ -542,6 +551,7 @@ const HANDLERS = {
     const [d0, d1] = cfg.discount;
     const start = Math.max(10, Math.round((x.price * (1 - (d0 + nextRandom(state) * (d1 - d0)))) / 10) * 10);
     const bidders = turnOrderFrom(state, player).slice(1).filter((q) => !P(state, q).bankrupt && P(state, q).cash >= start);
+    if (P(state, player).cash < x.price) { log(state, `${nm(state, player)} cannot afford ${x.name}: it stays unowned.`); return toManage(state); }
     log(state, `${nm(state, player)} passed on ${x.name}.`);
     if (!bidders.length) { log(state, `Nobody can afford to bid on ${x.name}: it stays unowned.`); return toManage(state); }
     t.bid = { space: i, seller: player, start, amount: null, high: null, bidders, passed: [], round: 0 };
@@ -774,8 +784,9 @@ function startTurn(state, pid) {
   log(state, `— ${p.name}'s turn (round ${state.round}) —`);
   if (!p.jailed) return;
   if (hasVehicle(p, 'JAIL_FREE_FIRST') && p.jailTurns === 0) { release(state, p, 'flew out by Helicopter'); return; }
-  if (p.jailCard) { state.turn.stage = 'jail'; return; }
-  if (p.jailTurns >= CONFIG.jailMaxFailedRolls) payJailFee(state, p);
+  // Third jail turn: the sentence is served, released free of charge (a card is kept for later).
+  if (p.jailTurns >= CONFIG.jailMaxFailedRolls) { release(state, p, 'served their time and is free to go'); return; }
+  state.turn.stage = 'jail'; // from the first turn: use a card, pay to leave, or roll for it
 }
 
 function payJailFee(state, p) {
@@ -1037,7 +1048,7 @@ export function botAction(state, pid) {
   if (state.phase === 'tokenPick') return { type: 'pickToken', player: pid, token: TOKENS.find((t) => !state.players.some((q) => q.token === t.id)).id };
   const t = state.turn;
   switch (t.stage) {
-    case 'jail': return { type: 'useJailCard', player: pid };
+    case 'jail': return { type: p.jailCard ? 'useJailCard' : 'skipJailCard', player: pid };
     case 'roll': return { type: 'roll', player: pid };
     case 'upgrade': return botBuild(state, pid) ?? { type: 'skipBuild', player: pid };
     case 'reroll': return { type: 'keepRoll', player: pid };
