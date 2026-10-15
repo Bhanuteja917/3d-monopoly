@@ -40,7 +40,7 @@ const landOn = (s, space) => rollTo(s, 0, space, [1]);
 function finishStage(s) {
   // Resolve any pending decision for the active player the passive way.
   const st = s.turn.stage;
-  if (st === 'buy') { doAct(s, 'decline'); if (s.turn.stage === 'bid') act(s, { type: 'expire', system: true }); }
+  if (st === 'buy') { doAct(s, 'auctionOff'); if (s.turn.stage === 'bid') act(s, { type: 'expire', system: true }); }
   else if (st === 'card') doAct(s, 'dismissCard');
   else if (st === 'auctionPick') doAct(s, 'auctionSkip');
   else if (st === 'shop') doAct(s, 'skipShop');
@@ -170,7 +170,7 @@ describe('Dice and movement', () => {
     rollTo(s, 0, NEUTRAL, [1]);
     assert.equal(s.turn.stage, 'buy');
     assert.equal(s.turn.active, 0);
-    doAct(s, 'decline');
+    doAct(s, 'auctionOff');
     assert.equal(s.turn.stage, 'bid');
     act(s, { type: 'expire', system: true });
     assert.equal(s.turn.active, 1);
@@ -182,7 +182,7 @@ describe('Dice and movement', () => {
     s.players[0].cash = 10;
     rollTo(s, 0, c, [1]);
     assert.equal(s.turn.stage, 'buy');
-    doAct(s, 'decline');
+    doAct(s, 'auctionOff');
     assert.equal(s.props[c].owner, null);
     assert.notEqual(s.turn.stage, 'bid');
     assert.equal(s.turn.active, 1); // the turn moved on
@@ -230,7 +230,7 @@ describe('Buying and rent', () => {
       const s = game(4, { seed });
       const [c] = A(s);
       rollTo(s, 0, c, [1]);
-      doAct(s, 'decline');
+      doAct(s, 'auctionOff');
       assert.equal(s.turn.stage, 'bid');
       const b = s.turn.bid;
       const price = s.props[c].price;
@@ -244,7 +244,7 @@ describe('Buying and rent', () => {
     const s = game(4);
     const [c] = A(s);
     rollTo(s, 0, c, [1]);
-    doAct(s, 'decline');
+    doAct(s, 'auctionOff');
     const start = s.turn.bid.start;
     const cash = s.players.map((p) => p.cash);
     act(s, { type: 'bid', player: 3, raise: 100 }); // first bid is the opening price
@@ -264,12 +264,12 @@ describe('Buying and rent', () => {
     const s = game(4);
     const [c, d] = A(s);
     rollTo(s, 0, c, [1]);
-    doAct(s, 'decline');
+    doAct(s, 'auctionOff');
     for (const q of [1, 2, 3]) act(s, { type: 'bidPass', player: q });
     assert.equal(s.props[c].owner, null);
     const t = game(4);
     rollTo(t, 0, d, [1]);
-    doAct(t, 'decline');
+    doAct(t, 'auctionOff');
     act(t, { type: 'bid', player: 2, raise: 1000 });
     assert.deepEqual(timeoutAction(t), { type: 'expire', system: true });
     act(t, timeoutAction(t));
@@ -279,7 +279,7 @@ describe('Buying and rent', () => {
     const s = game(4);
     const [c] = A(s);
     rollTo(s, 0, c, [1]);
-    doAct(s, 'decline');
+    doAct(s, 'auctionOff');
     assert.throws(() => act(s, { type: 'bid', player: 1, raise: 7 }), /bid buttons/);
     s.players[2].cash = 10;
     assert.throws(() => act(s, { type: 'bid', player: 2, raise: 100 }), /Not enough cash/);
@@ -1229,7 +1229,7 @@ describe('Disconnect bot', () => {
     rollTo(s, 0, c, [1]);
     assert.equal(botAction(s, 0).type, 'buy');
     s.players[0].cash = s.props[c].price + 2999;
-    assert.equal(botAction(s, 0).type, 'decline');
+    assert.equal(botAction(s, 0).type, 'auctionOff');
   });
   test('auction: lander skips, responder refuses; shop picks cheapest within reserve', () => {
     const s = game(6);
@@ -1262,5 +1262,37 @@ describe('Disconnect bot', () => {
         assert.ok(propsOf(s, s.winner) !== undefined);
       }
     }
+  });
+});
+
+describe('Pass vs auction, upgrade on buy', () => {
+  test('pass leaves the property unowned with no auction', () => {
+    const s = game(4);
+    const [c] = A(s);
+    rollTo(s, 0, c, [1]);
+    doAct(s, 'pass');
+    assert.equal(s.props[c].owner, null);
+    assert.notEqual(s.turn.stage, 'bid');
+    assert.notEqual(s.turn.active, 0);
+  });
+  test('auction opens bidding', () => {
+    const s = game(4);
+    const [c] = A(s);
+    rollTo(s, 0, c, [1]);
+    doAct(s, 'auctionOff');
+    assert.equal(s.turn.stage, 'bid');
+  });
+  test('buying the last city of a set offers the upgrade straight away', () => {
+    const s = game(4, { mode: 'turns' });
+    const cs = B(s);
+    give(s, 0, cs.slice(0, -1));
+    s.players[0].cash = 100000;
+    s.turn.extraRoll = false;
+    rollTo(s, 0, cs[cs.length - 1], [1]);
+    assert.equal(s.turn.stage, 'buy');
+    doAct(s, 'buy');
+    assert.equal(s.turn.stage, 'upgrade');
+    doAct(s, 'build', { space: cs[cs.length - 1] });
+    assert.equal(s.props[cs[cs.length - 1]].steps, 1);
   });
 });

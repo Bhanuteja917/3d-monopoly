@@ -77,7 +77,7 @@ This rewrites `public/cards/*.svg`. Card drawing lives in `public/js/cards.js` (
 - Turns end on their own as soon as the roll is resolved (no End turn button). Sell, mortgage and
   unmortgage happen on your own turn before you roll, or while a doubles re-roll is pending.
 - Upgrading: you can only build on a city of a complete set by landing on it yourself (stage `upgrade`), and only one
-  upgrade per turn (`turn.built`, kept across doubles re-rolls). Upgrades are still even across the set; skipping is allowed.
+  upgrade per turn (`turn.built`, kept across doubles re-rolls). Upgrades are still even across the set; skipping is allowed. Buying the last city of a set also offers the upgrade; when a set is complete but the landed city cannot be upgraded, the feed says why.
 
 - The board is one fixed 47-space world circuit for every player count (not the PRD's one-side-per-player polygon):
   12 colour sets of 2-4 cities (33 cities), 6 utilities and 8 corners (Start, 3 Auctions, Jail, Chance, Tax, Shopping Center).
@@ -90,8 +90,8 @@ This rewrites `public/cards/*.svg`. Card drawing lives in `public/js/cards.js` (
 - Utilities (Hydro Dam, Oil Refinery, Solar Farm) and Travel (High-Speed Rail, Seaport, Airport) are two separate sets of three;
   rent counts only the owner's holdings in the same set.
 - Jail: from your first jail turn you may pay 500 to leave, use a Get Out of Jail Free card, or roll for doubles (a 6 on one die). On your third jail turn you walk free without paying.
-- Declining a purchase sends it to auction (unless the lander cannot afford the city: then it simply stays unowned): the other players bid at the same time from a random 20-50% discount
-  (`CONFIG.bidAuction`), the clock (20 s) restarts with every bid, the winner pays the bank and the player who declined collects
+- On an unowned property you choose Buy, **Auction** or **Pass**. Pass leaves it unowned. Auction (if the lander cannot afford the city it simply stays unowned): the other players bid at the same time from a random 20-50% discount
+  (`CONFIG.bidAuction`), the clock (20 s) restarts with every bid, the winner pays the bank and the player who auctioned it collects
   a random 10-15% of the winning bid. No bids: it stays unowned.
 - Swap auctions (Auction corners): every other player picks an offer at the same time within 90 s; a completed swap pays both
   players 1,000 (`CONFIG.swapBonus`). Simultaneous stages use `actorsNow` in the engine; timers send a server-only `expire` action.

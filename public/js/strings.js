@@ -66,6 +66,7 @@ export const S = {
   upgradeFor: 'Build a {what} {price}',
   skipUpgrade: 'Skip',
   pass: 'Pass',
+  auctionOff: '🔨 Auction',
   ok: 'OK',
   cancel: 'Close',
   round: 'Round {r}/{max}',

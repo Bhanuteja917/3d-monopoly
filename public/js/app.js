@@ -706,7 +706,7 @@ function stageModalHTML(st, actor) {
     }
     case 'buy': {
       const x = st.props[tn.buy];
-      return `${propCardHTML(st, tn.buy)}<div class="modal-buttons"><button class="btn btn-green btn-big" id="m-buy" ${p.cash < x.price ? 'disabled' : ''}>${t(S.buyFor, { price: fmt(x.price) })}</button><button class="btn btn-red" id="m-pass">${S.pass}</button></div>`;
+      return `${propCardHTML(st, tn.buy)}<div class="modal-buttons"><button class="btn btn-green btn-big" id="m-buy" ${p.cash < x.price ? 'disabled' : ''}>${t(S.buyFor, { price: fmt(x.price) })}</button><button class="btn btn-yellow" id="m-auctionoff">${S.auctionOff}</button><button class="btn btn-red" id="m-pass">${S.pass}</button></div>`;
     }
     case 'upgrade': {
       // Landed on your own city with a complete set: one upgrade per turn, or skip.
@@ -791,7 +791,8 @@ function wireStageModal(st, actor) {
   onModal('#m-reroll', a('useReroll'));
   onModal('#m-keep', a('keepRoll'));
   onModal('#m-buy', a('buy'));
-  onModal('#m-pass', a('decline'));
+  onModal('#m-auctionoff', a('auctionOff'));
+  onModal('#m-pass', a('pass'));
   onModal('#m-build', (el) => send({ type: 'build', player: actor, space: st.turn.upgrade }));
   onModal('#m-skipbuild', a('skipBuild'));
   onModal('#m-stay', a('stayPay'));

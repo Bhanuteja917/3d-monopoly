@@ -518,7 +518,7 @@ const HANDLERS = {
     emit(state, { type: 'buy', player, space: t.buy });
     log(state, `${p.name} bought ${x.name} for ${fmt(x.price)}.`);
     t.buy = null;
-    toManage(state);
+    offerUpgrade(state, p, x) || toManage(state); // buying the last city of a set can be upgraded right away
   },
   travel(state, { player, option }) {
     const t = needStage(state, 'travel');
@@ -541,9 +541,17 @@ const HANDLERS = {
     if (!pay(state, player, x.owner, utilityRent(state, x), `rent for ${x.name}`, { kind: 'rent', space: from })) return afterBankruptActive(state);
     toManage(state);
   },
-  // Declining sends the property to auction: the other players bid, starting at a random 20-50% discount.
+  // Pass: leave the property unowned, no auction.
+  pass(state, { player }) {
+    const t = needStage(state, 'buy');
+    const x = state.props[t.buy];
+    t.buy = null;
+    log(state, `${nm(state, player)} passed on ${x.name}: it stays unowned.`);
+    toManage(state);
+  },
+  // Auction: the other players bid, starting at a random 20-50% discount.
   // A lander who cannot afford it is not forced into an auction: the property just stays unowned.
-  decline(state, { player }) {
+  auctionOff(state, { player }) {
     const t = needStage(state, 'buy');
     const i = t.buy, x = state.props[i];
     t.buy = null;
@@ -772,6 +780,29 @@ function respondersDone(state) {
   t.stage = 'auctionConfirm';
 }
 
+/** Opens the upgrade offer on city `x` the player is standing on, if the set rules allow one. */
+function offerUpgrade(state, p, x) {
+  const t = state.turn;
+  if (x.kind !== 'city' || x.owner !== p.id) return false;
+  if (t.built) { if (completeSet(state, p.id, x.country)) log(state, `${p.name} already upgraded this turn.`); return false; }
+  if (!buildable(state, p.id, p.pos)) {
+    const why = upgradeBlocker(state, p, x);
+    if (why) log(state, `${p.name} cannot upgrade ${x.name}: ${why}.`);
+    return false;
+  }
+  t.stage = 'upgrade'; t.upgrade = p.pos;
+  log(state, `${p.name} visits their own ${x.name} and may upgrade it.`);
+  return true;
+}
+/** Why a complete set cannot be upgraded on this city right now (null if the set is incomplete). */
+function upgradeBlocker(state, p, x) {
+  if (!completeSet(state, p.id, x.country)) return null;
+  if (countryProps(state, x.country).some((c) => c.mortgaged)) return 'a city in the set is mortgaged';
+  if (x.steps >= 3) return 'already a tower';
+  if (x.steps !== minSteps(state, x.country)) return 'upgrade the less developed cities in the set first';
+  return `not enough cash (${fmt(buildCost(state, p.id, x))})`;
+}
+
 // ---------- Turn flow ----------
 function startTurn(state, pid) {
   const p = P(state, pid);
@@ -858,11 +889,7 @@ function resolveSpace(state, p) {
     if (x.owner == null) { t.stage = 'buy'; t.buy = p.pos; return; }
     if (x.owner === p.id) {
       // Landing on your own city is the only time you may upgrade it, and only once per turn.
-      if (x.kind === 'city' && !t.built && buildable(state, p.id, p.pos)) {
-        t.stage = 'upgrade'; t.upgrade = p.pos;
-        log(state, `${p.name} visits their own ${x.name} and may upgrade it.`);
-        return;
-      }
+      if (offerUpgrade(state, p, x)) return;
       log(state, `${p.name} visits their own ${x.name}.`);
       return toManage(state);
     }
@@ -1053,7 +1080,7 @@ export function botAction(state, pid) {
     case 'upgrade': return botBuild(state, pid) ?? { type: 'skipBuild', player: pid };
     case 'reroll': return { type: 'keepRoll', player: pid };
     case 'card': return { type: 'dismissCard', player: pid };
-    case 'buy': return p.cash - state.props[t.buy].price >= reserve ? { type: 'buy', player: pid } : { type: 'decline', player: pid };
+    case 'buy': return p.cash - state.props[t.buy].price >= reserve ? { type: 'buy', player: pid } : { type: 'auctionOff', player: pid };
     case 'travel': { // cheapest of staying (flat rent) and the trips
       const k = t.travel.options.reduce((best, o, i, all) => (o.fare < all[best].fare ? i : best), 0);
       if (!t.travel.options.length || utilityRent(state, state.props[t.travel.from]) <= t.travel.options[k].fare) return { type: 'stayPay', player: pid };
